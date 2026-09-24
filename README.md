@@ -1,11 +1,10 @@
 # mvcc-kv
 
-An in-process, multi-shard key-value store with MVCC transactions and a
-coordinator that runs a two-phase commit across shards.
+进程内多 shard 键值存储：支持 MVCC 事务，并由 Coordinator 跨 shard 做两阶段提交。
 
-Starter code under `src/` is incomplete. Make `npm test` and `npm run build` pass.
+`src/` 下的起始实现尚未完成。请使 `npm test` 与 `npm run build` 通过。
 
-## Setup
+## 本地运行
 
 ```bash
 npm install
