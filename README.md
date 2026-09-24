@@ -1,11 +1,10 @@
 # dag-orchestrator
 
-In-process DAG workflow orchestrator with multi-tenant fair scheduling,
-retries, cancellation, and crash checkpoints.
+进程内 DAG 工作流编排器：支持多租户公平调度、失败重试、取消传播与崩溃检查点恢复。
 
-Starter code under `src/` is incomplete. Make `npm test` and `npm run build` pass.
+`src/` 下为未完成的起始实现。请补全代码，使 `npm test` 与 `npm run build` 通过。
 
-## Setup
+## 本地运行
 
 ```bash
 npm install
