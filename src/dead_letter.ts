@@ -6,11 +6,20 @@ export interface DeadLetterEntry {
   deliveryCount: number;
 }
 
-/** Dead letter queue — stub empty. */
+/** Per-topic dead letter queue for poison messages. */
 export class DeadLetterQueue {
-  add(_topic: string, _entry: DeadLetterEntry): void {}
+  private entries = new Map<string, DeadLetterEntry[]>();
 
-  list(_topic: string): DeadLetterEntry[] {
-    return [];
+  add(topic: string, entry: DeadLetterEntry): void {
+    let list = this.entries.get(topic);
+    if (!list) {
+      list = [];
+      this.entries.set(topic, list);
+    }
+    list.push(entry);
+  }
+
+  list(topic: string): DeadLetterEntry[] {
+    return [...(this.entries.get(topic) ?? [])];
   }
 }

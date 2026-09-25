@@ -1,16 +1,20 @@
 import type { Message } from "./message.js";
 
-/** Single-partition log — stub keeps no messages. */
+/** Single-partition ordered append-only log. */
 export class Partition {
-  append(_key: string | null, _value: string): number {
-    return 0;
+  private messages: Message[] = [];
+
+  append(key: string | null, value: string): number {
+    const offset = this.messages.length;
+    this.messages.push({ offset, key, value });
+    return offset;
   }
 
-  read(_offset: number): Message | undefined {
-    return undefined;
+  read(offset: number): Message | undefined {
+    return this.messages[offset];
   }
 
   length(): number {
-    return 0;
+    return this.messages.length;
   }
 }
