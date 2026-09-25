@@ -37,6 +37,8 @@ export class SubscriptionRegistry {
     opts: SubOptions = {},
   ): number {
     const key = `${topic}::${consumer}`;
+    const existing = this.byKey.get(key);
+    if (existing !== undefined) return existing;
     const id = this.nextId++;
     this.byKey.set(key, id);
     this.subs.set(id, {
@@ -80,13 +82,13 @@ export class SubscriptionRegistry {
     const s = this.get(id);
     if (!s.inflight || s.inflight.offset !== offset) throw new Error("not inflight");
     const nextCount = s.inflight.deliverCount + 1;
-    if (nextCount >= 1) {
+    s.inflight = undefined;
+    if (nextCount > s.maxDeliver) {
       s.inflight = undefined;
       s.pending = undefined;
       s.committed = offset;
       return "dlq";
     }
-    s.inflight = undefined;
     s.pending = {
       offset,
       deliverCount: nextCount,

@@ -13,8 +13,13 @@ export class Delivery {
 
   next(subId: number, nowTick: number): Message | null {
     const s = this.subs.get(subId);
-    const pending = this.subs.takePendingIfReady(subId, nowTick);
-    if (pending) {
+    // One outstanding delivery at a time: an in-flight message blocks polling.
+    if (s.inflight) return null;
+    // A pending redelivery blocks newer offsets until it becomes available.
+    if (s.pending) {
+      if (s.pending.availableAt > nowTick) return null;
+      const pending = this.subs.takePendingIfReady(subId, nowTick);
+      if (!pending) return null;
       const msg = this.store.get(s.topic, pending.offset);
       if (!msg) return null;
       this.subs.markInflight(subId, pending.offset, pending.deliverCount, pending.availableAt);
