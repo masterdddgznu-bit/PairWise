@@ -1,15 +1,17 @@
 import type { Command, CommandResult } from "./types.js";
-import type { CounterAggregate } from "./aggregate.js";
+import { CounterAggregate } from "./aggregate.js";
 import type { Repository } from "./repository.js";
 
-/** Idempotency registry — stub always misses. */
+/** Idempotency registry keyed by commandId. */
 export class IdempotencyStore {
-  get(_commandId: string): CommandResult | undefined {
-    return undefined;
+  private readonly results = new Map<string, CommandResult>();
+
+  get(commandId: string): CommandResult | undefined {
+    return this.results.get(commandId);
   }
 
-  set(_commandId: string, _result: CommandResult): void {
-    /* no-op */
+  set(commandId: string, result: CommandResult): void {
+    this.results.set(commandId, result);
   }
 }
 
@@ -19,7 +21,26 @@ export class CommandHandler {
     private readonly idempotency: IdempotencyStore,
   ) {}
 
-  execute(_cmd: Command): CommandResult {
-    return { aggregateId: "", version: 0 };
+  execute(cmd: Command): CommandResult {
+    const existing = this.idempotency.get(cmd.commandId);
+    if (existing) return existing;
+    let result: CommandResult;
+    switch (cmd.type) {
+      case "create": {
+        const aggregate = CounterAggregate.create(cmd.aggregateId);
+        this.repo.save(aggregate);
+        result = { aggregateId: aggregate.id, version: aggregate.version };
+        break;
+      }
+      case "increment": {
+        const aggregate = this.repo.load(cmd.aggregateId);
+        aggregate.increment(cmd.by);
+        this.repo.save(aggregate);
+        result = { aggregateId: aggregate.id, version: aggregate.version };
+        break;
+      }
+    }
+    this.idempotency.set(cmd.commandId, result);
+    return result;
   }
 }
