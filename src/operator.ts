@@ -4,7 +4,7 @@ import type { SideOutput } from "./side_output.js";
 import type { WatermarkTracker } from "./watermark.js";
 import { WindowAssigner } from "./window_assigner.js";
 
-/** Windowed sum operator — routes on-time vs late events. */
+  /** Windowed sum operator — routes on-time vs late events. */
 export class WindowAggregateOperator {
   private assigner: WindowAssigner;
 
@@ -20,14 +20,12 @@ export class WindowAggregateOperator {
   process(record: StreamRecord): void {
     this.watermark.observe(record.eventTime);
     const { windowStart, windowEnd } = this.assigner.assign(record.eventTime);
-    const wm = this.watermark.watermark();
 
-    if (record.eventTime < wm) {
+    // A record is late only when its window has already been closed by an
+    // advanced watermark. Out-of-order records whose window is still open
+    // (e.g. within allowedLateness) must still update the aggregate.
+    if (this.state.isClosed(record.key, windowStart)) {
       this.late.emit(record);
-      return;
-    }
-
-    if (!this.assigner.contains(record.eventTime, windowStart, windowEnd)) {
       return;
     }
 
@@ -37,8 +35,8 @@ export class WindowAggregateOperator {
   closeEligible(): AggregateResult[] {
     const wm = this.watermark.watermark();
     const closed = this.state.closeWhereEndAtMost(wm);
-    return closed.map((w) => ({
-      key: "",
+    return closed.map(({ key, window: w }) => ({
+      key,
       windowStart: w.windowStart,
       windowEnd: w.windowEnd,
       sum: w.sum,

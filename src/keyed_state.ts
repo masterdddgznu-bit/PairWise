@@ -1,5 +1,10 @@
 import type { WindowAccumulator } from "./types.js";
 
+export type ClosedWindow = {
+  key: string;
+  window: WindowAccumulator;
+};
+
 /** Per-key tumbling window aggregates. */
 export class KeyedWindowState {
   private byKey = new Map<string, Map<number, WindowAccumulator>>();
@@ -36,13 +41,13 @@ export class KeyedWindowState {
     return this.bucket(key).get(windowStart)?.closed ?? false;
   }
 
-  closeWhereEndAtMost(watermark: number): WindowAccumulator[] {
-    const closed: WindowAccumulator[] = [];
-    for (const bucket of this.byKey.values()) {
+  closeWhereEndAtMost(watermark: number): ClosedWindow[] {
+    const closed: ClosedWindow[] = [];
+    for (const [key, bucket] of this.byKey) {
       for (const w of bucket.values()) {
         if (!w.closed && w.windowEnd <= watermark) {
           w.closed = true;
-          closed.push(w);
+          closed.push({ key, window: w });
         }
       }
     }

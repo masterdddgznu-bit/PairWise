@@ -1,6 +1,12 @@
 import type { VirtualClock } from "./clock.js";
 
-/** Tracks watermark for window closing — periodic advance on tick. */
+/**
+ * Tracks the event-time watermark for window closing.
+ *
+ * The watermark is derived purely from observed event times
+ * (W = max(0, maxObservedEventTime - allowedLateness)); the logical clock is
+ * retained for ingest/tick ordering but never drives event time.
+ */
 export class WatermarkTracker {
   private maxEventTime = 0;
 
@@ -17,8 +23,7 @@ export class WatermarkTracker {
 
   /** Current watermark used to close windows. */
   watermark(): number {
-    const base = this.clock.now();
-    return Math.max(0, base - this.allowedLateness);
+    return Math.max(0, this.maxEventTime - this.allowedLateness);
   }
 
   maxObserved(): number {

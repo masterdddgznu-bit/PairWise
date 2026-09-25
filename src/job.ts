@@ -47,14 +47,11 @@ export class StreamJob {
   }
 
   results(): AggregateResult[] {
-    const open = this.state.openWindows().map((w) => ({
-      key: "",
-      windowStart: w.windowStart,
-      windowEnd: w.windowEnd,
-      sum: w.sum,
-    }));
-    const all = [...this.emitted, ...open];
-    return all.sort((a, b) => b.sum - a.sum);
+    return [...this.emitted].sort((a, b) => {
+      if (a.key < b.key) return -1;
+      if (a.key > b.key) return 1;
+      return a.windowStart - b.windowStart;
+    });
   }
 
   late(): StreamRecord[] {
@@ -65,6 +62,7 @@ export class StreamJob {
     return serializeCheckpoint({
       keyed: this.state,
       late: this.lateSide,
+      watermark: this.watermark,
       emitted: this.emitted,
       nextOffset: this.nextOffset,
     });
@@ -85,12 +83,18 @@ export class StreamJob {
     );
   }
 
-  ingestFrom(records: StreamRecord[], startOffset: number): void {
-    for (let i = 0; i < records.length; i++) {
-      if (i >= startOffset) {
-        this.operator.process(records[i]!);
-        this.nextOffset++;
-      }
+  /**
+   * Exactly-once replay: process only records whose source offset is strictly
+   * greater than startOffset. Record index doubles as its source offset, so
+   * the record at startOffset is skipped (exclusive).
+   */
+  ingestFrom(records: StreamRecord[], startOffset: number): number[] {
+    const offsets: number[] = [];
+    for (let offset = 0; offset < records.length; offset++) {
+      if (offset <= startOffset) continue;
+      offsets.push(this.nextOffset++);
+      this.operator.process(records[offset]!);
     }
+    return offsets;
   }
 }
