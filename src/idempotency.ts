@@ -2,16 +2,16 @@
 export class IdempotencyStore {
   private seen = new Set<string>();
 
-  private key(stepName: string, kind: "do" | "undo"): string {
-    return `${stepName}:${kind}`;
+  private key(sagaId: string, stepName: string, kind: "do" | "undo"): string {
+    return `${sagaId}:${stepName}:${kind}`;
   }
 
-  has(_sagaId: string, stepName: string, kind: "do" | "undo"): boolean {
-    return this.seen.has(this.key(stepName, kind));
+  has(sagaId: string, stepName: string, kind: "do" | "undo"): boolean {
+    return this.seen.has(this.key(sagaId, stepName, kind));
   }
 
-  mark(_sagaId: string, stepName: string, kind: "do" | "undo"): void {
-    this.seen.add(this.key(stepName, kind));
+  mark(sagaId: string, stepName: string, kind: "do" | "undo"): void {
+    this.seen.add(this.key(sagaId, stepName, kind));
   }
 
   snapshot(): string[] {
