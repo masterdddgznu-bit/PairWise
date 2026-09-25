@@ -1,25 +1,52 @@
 import type { DomainEvent, Snapshot } from "./types.js";
 
+let eventSeq = 0;
+let clockSeq = 0;
+
+function nextEventId(): string {
+  eventSeq += 1;
+  return `evt-${eventSeq}`;
+}
+
+function nextTick(): number {
+  clockSeq += 1;
+  return clockSeq;
+}
+
 export abstract class Aggregate {
   abstract readonly id: string;
   version = 0;
 
-  protected raise(_type: string, _payload: unknown): void {
-    /* stub */
+  private uncommittedEvents: DomainEvent[] = [];
+
+  protected raise(type: string, payload: unknown): void {
+    const event: DomainEvent = {
+      eventId: nextEventId(),
+      aggregateId: this.id,
+      type,
+      payload,
+      version: this.version + 1,
+      occurredAt: nextTick(),
+    };
+    this.uncommittedEvents.push(event);
+    this.apply(event);
   }
 
-  abstract applyState(_event: DomainEvent): void;
+  abstract applyState(event: DomainEvent): void;
 
-  apply(_event: DomainEvent): void {
-    /* stub */
+  apply(event: DomainEvent): void {
+    this.applyState(event);
+    this.version = event.version;
   }
 
   pullUncommittedEvents(): DomainEvent[] {
-    return [];
+    const events = this.uncommittedEvents;
+    this.uncommittedEvents = [];
+    return events;
   }
 }
 
-/** Demo aggregate for tests — stub never mutates. */
+/** Demo aggregate for tests: a simple counter. */
 export class CounterAggregate extends Aggregate {
   count = 0;
 
@@ -28,15 +55,35 @@ export class CounterAggregate extends Aggregate {
   }
 
   static create(id: string): CounterAggregate {
-    return new CounterAggregate(id);
+    const aggregate = new CounterAggregate(id);
+    aggregate.raise("created", {});
+    return aggregate;
   }
 
-  increment(_by?: number): void {
-    /* stub */
+  increment(by = 1): void {
+    this.raise("incremented", { by });
   }
 
-  static rehydrate(id: string, _events: DomainEvent[], _snapshot: Snapshot | null): CounterAggregate {
-    return new CounterAggregate(id);
+  applyState(event: DomainEvent): void {
+    if (event.type === "created") {
+      this.count = 0;
+    } else if (event.type === "incremented") {
+      const payload = event.payload as { by?: number };
+      this.count += payload.by ?? 1;
+    }
+  }
+
+  static rehydrate(id: string, events: DomainEvent[], snapshot: Snapshot | null): CounterAggregate {
+    const aggregate = new CounterAggregate(id);
+    if (snapshot) {
+      const state = snapshot.state as { count: number };
+      aggregate.count = state.count;
+      aggregate.version = snapshot.version;
+    }
+    for (const event of events) {
+      aggregate.apply(event);
+    }
+    return aggregate;
   }
 
   toSnapshot(): Snapshot {

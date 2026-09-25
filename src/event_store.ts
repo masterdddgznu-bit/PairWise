@@ -1,17 +1,30 @@
 import type { DomainEvent, EventStore } from "./types.js";
 import { ConcurrencyError } from "./errors.js";
 
-/** Append-only in-memory event store — stub does not persist. */
+/** Append-only in-memory event store with per-aggregate optimistic concurrency. */
 export class InMemoryEventStore implements EventStore {
-  append(_aggregateId: string, _events: DomainEvent[], _expectedVersion: number): void {
-    /* no-op */
+  private readonly streams = new Map<string, DomainEvent[]>();
+
+  append(aggregateId: string, events: DomainEvent[], expectedVersion: number): void {
+    if (events.length === 0) {
+      return;
+    }
+    const stream = this.streams.get(aggregateId) ?? [];
+    const currentVersion = stream.length === 0 ? 0 : stream[stream.length - 1].version;
+    if (currentVersion !== expectedVersion) {
+      throw new ConcurrencyError(
+        `aggregate ${aggregateId}: expected version ${expectedVersion}, actual ${currentVersion}`,
+      );
+    }
+    this.streams.set(aggregateId, [...stream, ...events]);
   }
 
-  load(_aggregateId: string, _afterVersion?: number): DomainEvent[] {
-    return [];
+  load(aggregateId: string, afterVersion = 0): DomainEvent[] {
+    const stream = this.streams.get(aggregateId) ?? [];
+    return stream.filter((event) => event.version > afterVersion);
   }
 
   listAggregateIds(): string[] {
-    return [];
+    return [...this.streams.keys()];
   }
 }

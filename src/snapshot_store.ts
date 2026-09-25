@@ -1,16 +1,21 @@
 import type { Snapshot, SnapshotStore } from "./types.js";
 
-/** In-memory snapshot store — stub keeps nothing. */
+/** In-memory snapshot store with a test hook to corrupt snapshots. */
 export class InMemorySnapshotStore implements SnapshotStore {
-  save(_snapshot: Snapshot): void {
-    /* no-op */
+  private readonly snapshots = new Map<string, Snapshot>();
+
+  save(snapshot: Snapshot): void {
+    this.snapshots.set(snapshot.aggregateId, snapshot);
   }
 
-  load(_aggregateId: string): Snapshot | null {
-    return null;
+  load(aggregateId: string): Snapshot | null {
+    return this.snapshots.get(aggregateId) ?? null;
   }
 
-  corrupt(_aggregateId: string): void {
-    /* no-op */
+  corrupt(aggregateId: string): void {
+    const existing = this.snapshots.get(aggregateId);
+    if (existing) {
+      this.snapshots.set(aggregateId, { ...existing, valid: false });
+    }
   }
 }
