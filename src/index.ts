@@ -1,4 +1,12 @@
 export { VirtualClock } from "./clock.js";
 export { Broker } from "./broker.js";
-export type { Delivery } from "./message.js";
-export type { Message } from "./message.js";
+export { Partition } from "./partition.js";
+export { Topic } from "./topic.js";
+export { OffsetManager } from "./offset_manager.js";
+export { DeliveryManager } from "./delivery_manager.js";
+export type { InflightRecord } from "./delivery_manager.js";
+export { DeadLetterQueue } from "./dead_letter.js";
+export type { DeadLetterEntry } from "./dead_letter.js";
+export { ConsumerGroupRegistry } from "./consumer_group.js";
+export type { PartitionAssignment, GroupMember } from "./consumer_group.js";
+export type { Delivery, Message } from "./message.js";
