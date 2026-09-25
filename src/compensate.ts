@@ -7,8 +7,8 @@ import { Graph } from "./graph.js";
 export class Compensator {
   order(steps: StepDef[], onlyIds: string[]): string[] {
     const g = new Graph(steps);
-    const topo = g.topo(); // should follow reverse dependency order
-    return topo.filter((id) => onlyIds.includes(id));
+    const order = g.reverseTopo();
+    return order.filter((id) => onlyIds.includes(id));
   }
 
   label(step: StepDef): string {

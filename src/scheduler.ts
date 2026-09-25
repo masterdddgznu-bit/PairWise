@@ -5,7 +5,6 @@ export class Scheduler {
   constructor(private graph: Graph) {}
 
   runnable(steps: Record<string, StepRuntime>, defs: StepDef[]): string[] {
-    const defMap = new Map(defs.map((d) => [d.id, d]));
     const out: string[] = [];
     for (const id of this.graph.ids()) {
       const st = steps[id];
@@ -14,13 +13,9 @@ export class Scheduler {
         id,
         (x) => steps[x].state,
         (x) => steps[x].generation,
-        (dep) => {
-          // expected input generation = dep's result generation
-          return steps[dep].result?.generation ?? steps[dep].generation;
-        },
+        (dep) => steps[dep].result?.generation ?? -1,
       );
       if (ready) out.push(id);
-      void defMap;
     }
     return out;
   }

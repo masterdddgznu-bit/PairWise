@@ -15,7 +15,7 @@ export class Engine {
   private cancelScope = new CancelScope();
   private cache = new ResultCache();
   private compensator = new Compensator();
-  private invalidator = new Invalidator(this.cache);
+  private invalidator = new Invalidator(this.cache, this.sm);
   private runs = new Map<string, RunSnapshot>();
   private defs = new Map<string, WorkflowDef>();
   private graphs = new Map<string, Graph>();
@@ -89,7 +89,7 @@ export class Engine {
   }
 
   private tickRun(run: RunSnapshot): void {
-    if (run.status === "rolled_back") return;
+    if (run.status === "rolled_back" || run.status === "failed") return;
 
     // Cancel may arrive after a run already succeeded; still enter rollback.
     if (run.cancelRequested && run.status !== "rolling_back") {
@@ -101,8 +101,6 @@ export class Engine {
       return;
     }
 
-    if (run.status === "succeeded" || run.status === "failed") return;
-
     const def = this.defs.get(run.workflowId)!;
     const graph = this.graphs.get(run.workflowId)!;
     const sched = this.schedulers.get(run.workflowId)!;
@@ -112,7 +110,7 @@ export class Engine {
     for (const st of Object.values(run.steps)) {
       if (st.state === "failed" && st.nextRetryAt !== undefined && st.nextRetryAt <= this.now) {
         this.invalidator.bumpAndInvalidate(run.runId, graph, run.steps, st.id);
-        st.state = "pending";
+        st.state = this.sm.transition(st.state, "pending", false);
         st.nextRetryAt = undefined;
         st.lastError = undefined;
       }
@@ -120,7 +118,10 @@ export class Engine {
 
     const ready = sched.runnable(run.steps, def.steps);
     for (const id of ready) {
-      this.runStep(run, def.steps.find((s) => s.id === id)!, handler, graph);
+      // A handler may request cancel while running a sibling; do not start
+      // any further work in that case; rollback begins right after.
+      if (run.cancelRequested) break;
+      this.runStep(run, def.steps.find((s) => s.id === id)!, handler);
     }
 
     if (run.cancelRequested) {
@@ -135,16 +136,18 @@ export class Engine {
     run: RunSnapshot,
     stepDef: StepDef,
     handler: Handler,
-    graph: Graph,
   ): void {
     const st = run.steps[stepDef.id];
-    this.executors.start(run.runId, st);
+    if (!this.executors.start(run.runId, st)) return;
     const inputs: Record<string, string> = {};
     for (const d of stepDef.deps) {
       const dep = run.steps[d];
-      // Intentionally trust cache helper (bugs live in ResultCache / Graph.isReady).
-      const cached = this.cache.get(run.runId, d, dep.generation);
-      const val = cached?.value ?? dep.result?.value;
+      // Scheduling guaranteed dep succeeded at its current generation.
+      const committed =
+        dep.result && dep.result.generation === dep.generation
+          ? dep.result.value
+          : this.cache.get(run.runId, d, dep.generation)?.value;
+      const val = committed;
       if (val === undefined) {
         this.executors.finishFailure(run.runId, st, "missing input");
         return;
@@ -165,9 +168,6 @@ export class Engine {
       const when = this.retry.schedule(stepDef, st.attempt, this.now);
       st.attempt += 1;
       if (when !== undefined) st.nextRetryAt = when;
-      else {
-        void graph;
-      }
     }
   }
 

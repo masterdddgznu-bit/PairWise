@@ -18,19 +18,38 @@ export class Executor {
     private cancel: CancelScope,
   ) {}
 
-  start(runId: string, step: StepRuntime): void {
-    step.state = this.sm.transition(step.state, "running", this.cancel.isRequested(runId));
+  /** Move pending -> running. Returns false if the step may not start. */
+  start(runId: string, step: StepRuntime): boolean {
+    if (this.cancel.isRequested(runId)) return false;
+    try {
+      step.state = this.sm.transition(step.state, "running", false);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
+  /**
+   * Commit a success. A cancel that arrived while the handler ran must prevent
+   * the commit: the step ends cancelled instead, with no result / cache entry.
+   */
   finishSuccess(
     runId: string,
     step: StepRuntime,
     value: string,
-  ): void {
+  ): boolean {
     const cancelRequested = this.cancel.isRequested(runId);
-    step.state = this.sm.transition(step.state, "succeeded", cancelRequested);
+    try {
+      step.state = this.sm.transition(step.state, "succeeded", cancelRequested);
+    } catch {
+      if (step.state === "running") {
+        step.state = this.sm.transition(step.state, "cancelled", true);
+      }
+      return false;
+    }
     step.result = { value, generation: step.generation };
     this.cache.set(runId, step.id, step.result);
+    return true;
   }
 
   finishFailure(runId: string, step: StepRuntime, error: string): void {

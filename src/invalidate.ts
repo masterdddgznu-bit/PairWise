@@ -1,12 +1,16 @@
 import type { StepRuntime } from "./types.js";
 import { Graph } from "./graph.js";
 import type { ResultCache } from "./cache.js";
+import type { StateMachine } from "./state_machine.js";
 
 /**
  * Propagate invalidation to dependents when a step generation bumps.
  */
 export class Invalidator {
-  constructor(private cache: ResultCache) {}
+  constructor(
+    private cache: ResultCache,
+    private sm: StateMachine,
+  ) {}
 
   bumpAndInvalidate(
     runId: string,
@@ -18,11 +22,25 @@ export class Invalidator {
     root.generation += 1;
     root.result = undefined;
     this.cache.invalidate(runId, rootId);
-    // Only touches direct dependents today; deeper DAG nodes may keep old results.
-    for (const dep of graph.dependents(rootId)) {
-      this.cache.invalidate(runId, dep);
-      if (steps[dep].state === "succeeded") {
-        // state/result left as-is
+
+    // Propagate transitively: every committed downstream result was derived
+    // from the root's previous generation and must be recomputed.
+    const queue = [...graph.dependents(rootId)];
+    const seen = new Set<string>(queue);
+    while (queue.length) {
+      const id = queue.shift()!;
+      const node = steps[id];
+      this.cache.invalidate(runId, id);
+      if (node.state === "succeeded") {
+        node.state = this.sm.transition(node.state, "pending", false);
+        node.generation += 1;
+        node.result = undefined;
+      }
+      for (const child of graph.dependents(id)) {
+        if (!seen.has(child)) {
+          seen.add(child);
+          queue.push(child);
+        }
       }
     }
   }
