@@ -17,8 +17,7 @@ export class WatermarkTracker {
 
   /** Current watermark used to close windows. */
   watermark(): number {
-    const base = this.clock.now();
-    return Math.max(0, base - this.allowedLateness);
+    return Math.max(0, this.maxEventTime - this.allowedLateness);
   }
 
   maxObserved(): number {

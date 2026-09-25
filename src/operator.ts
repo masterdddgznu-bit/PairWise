@@ -20,14 +20,9 @@ export class WindowAggregateOperator {
   process(record: StreamRecord): void {
     this.watermark.observe(record.eventTime);
     const { windowStart, windowEnd } = this.assigner.assign(record.eventTime);
-    const wm = this.watermark.watermark();
 
-    if (record.eventTime < wm) {
+    if (this.state.isClosed(record.key, windowStart)) {
       this.late.emit(record);
-      return;
-    }
-
-    if (!this.assigner.contains(record.eventTime, windowStart, windowEnd)) {
       return;
     }
 
@@ -37,8 +32,8 @@ export class WindowAggregateOperator {
   closeEligible(): AggregateResult[] {
     const wm = this.watermark.watermark();
     const closed = this.state.closeWhereEndAtMost(wm);
-    return closed.map((w) => ({
-      key: "",
+    return closed.map(({ key, window: w }) => ({
+      key,
       windowStart: w.windowStart,
       windowEnd: w.windowEnd,
       sum: w.sum,

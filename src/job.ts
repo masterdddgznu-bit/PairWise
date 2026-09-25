@@ -47,14 +47,9 @@ export class StreamJob {
   }
 
   results(): AggregateResult[] {
-    const open = this.state.openWindows().map((w) => ({
-      key: "",
-      windowStart: w.windowStart,
-      windowEnd: w.windowEnd,
-      sum: w.sum,
-    }));
-    const all = [...this.emitted, ...open];
-    return all.sort((a, b) => b.sum - a.sum);
+    return this.emitted
+      .map((r) => ({ ...r }))
+      .sort((a, b) => a.key.localeCompare(b.key) || a.windowStart - b.windowStart);
   }
 
   late(): StreamRecord[] {
@@ -63,6 +58,7 @@ export class StreamJob {
 
   checkpoint(): string {
     return serializeCheckpoint({
+      maxEventTime: this.watermark.maxObserved(),
       keyed: this.state,
       late: this.lateSide,
       emitted: this.emitted,
@@ -87,7 +83,7 @@ export class StreamJob {
 
   ingestFrom(records: StreamRecord[], startOffset: number): void {
     for (let i = 0; i < records.length; i++) {
-      if (i >= startOffset) {
+      if (i > startOffset) {
         this.operator.process(records[i]!);
         this.nextOffset++;
       }

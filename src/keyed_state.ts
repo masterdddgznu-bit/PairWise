@@ -36,13 +36,13 @@ export class KeyedWindowState {
     return this.bucket(key).get(windowStart)?.closed ?? false;
   }
 
-  closeWhereEndAtMost(watermark: number): WindowAccumulator[] {
-    const closed: WindowAccumulator[] = [];
-    for (const bucket of this.byKey.values()) {
+  closeWhereEndAtMost(watermark: number): Array<{ key: string; window: WindowAccumulator }> {
+    const closed: Array<{ key: string; window: WindowAccumulator }> = [];
+    for (const [key, bucket] of this.byKey) {
       for (const w of bucket.values()) {
         if (!w.closed && w.windowEnd <= watermark) {
           w.closed = true;
-          closed.push(w);
+          closed.push({ key, window: w });
         }
       }
     }

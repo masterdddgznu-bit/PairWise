@@ -12,6 +12,6 @@ export class WindowAssigner {
 
   /** Whether eventTime falls in [windowStart, windowEnd]. */
   contains(eventTime: number, windowStart: number, windowEnd: number): boolean {
-    return eventTime >= windowStart && eventTime <= windowEnd;
+    return eventTime >= windowStart && eventTime < windowEnd;
   }
 }

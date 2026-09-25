@@ -3,13 +3,14 @@ import type { KeyedWindowState } from "./keyed_state.js";
 import type { SideOutput } from "./side_output.js";
 
 export function serializeCheckpoint(opts: {
+  maxEventTime: number;
   keyed: KeyedWindowState;
   late: SideOutput;
   emitted: AggregateResult[];
   nextOffset: number;
 }): string {
   const payload: CheckpointPayload = {
-    maxEventTime: 0,
+    maxEventTime: opts.maxEventTime,
     keyed: opts.keyed.toRecord(),
     late: opts.late.all(),
     emitted: opts.emitted.map((r) => ({ ...r })),
