@@ -4,30 +4,69 @@ export interface ShardStats {
 }
 
 /**
- * 分片存储与 2PC 参与者。起始实现未完成。
+ * 分片存储与 2PC 参与者。
  */
 export class Shard {
-  get(_key: string): string | undefined {
-    throw new Error("not implemented");
+  private readonly data = new Map<string, string>();
+  private readonly locks = new Map<string, number>(); // key -> tx
+  private readonly staged = new Map<number, Record<string, string>>(); // tx -> writes
+
+  get(key: string): string | undefined {
+    return this.data.get(key);
   }
 
-  prepare(_tx: number, _writes: Record<string, string>): boolean {
-    throw new Error("not implemented");
+  prepare(tx: number, writes: Record<string, string>): boolean {
+    for (const key of Object.keys(writes)) {
+      const holder = this.locks.get(key);
+      if (holder !== undefined && holder !== tx) {
+        return false;
+      }
+    }
+    const existing = this.staged.get(tx) ?? {};
+    for (const [key, value] of Object.entries(writes)) {
+      this.locks.set(key, tx);
+      existing[key] = value;
+    }
+    this.staged.set(tx, existing);
+    return true;
   }
 
-  commit(_tx: number): void {
-    throw new Error("not implemented");
+  commit(tx: number): void {
+    const writes = this.staged.get(tx);
+    if (writes !== undefined) {
+      for (const [key, value] of Object.entries(writes)) {
+        this.data.set(key, value);
+      }
+    }
+    this.release(tx);
   }
 
-  abort(_tx: number): void {
-    throw new Error("not implemented");
+  abort(tx: number): void {
+    this.release(tx);
   }
 
-  apply(_tx: number, _writes: Record<string, string>): void {
-    throw new Error("not implemented");
+  apply(tx: number, writes: Record<string, string>): void {
+    for (const key of Object.keys(writes)) {
+      const holder = this.locks.get(key);
+      if (holder !== undefined && holder !== tx) {
+        throw new Error(`key locked by tx ${holder}: ${key}`);
+      }
+    }
+    for (const [key, value] of Object.entries(writes)) {
+      this.data.set(key, value);
+    }
   }
 
   stats(): ShardStats {
-    throw new Error("not implemented");
+    return { keys: this.data.size, prepared: this.staged.size };
+  }
+
+  private release(tx: number): void {
+    this.staged.delete(tx);
+    for (const [key, holder] of this.locks) {
+      if (holder === tx) {
+        this.locks.delete(key);
+      }
+    }
   }
 }
