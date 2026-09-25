@@ -37,6 +37,8 @@ export class SubscriptionRegistry {
     opts: SubOptions = {},
   ): number {
     const key = `${topic}::${consumer}`;
+    const existing = this.byKey.get(key);
+    if (existing !== undefined) return existing;
     const id = this.nextId++;
     this.byKey.set(key, id);
     this.subs.set(id, {
@@ -65,6 +67,16 @@ export class SubscriptionRegistry {
     s.pending = undefined;
   }
 
+  hasInflight(id: number): boolean {
+    return this.get(id).inflight !== undefined;
+  }
+
+  /** True when a redelivery is parked and not yet due at nowTick. */
+  isPendingWaiting(id: number, nowTick: number): boolean {
+    const s = this.get(id);
+    return s.pending !== undefined && s.pending.availableAt > nowTick;
+  }
+
   ack(id: number, offset: number): void {
     const s = this.get(id);
     if (!s.inflight || s.inflight.offset !== offset) throw new Error("not inflight");
@@ -80,7 +92,7 @@ export class SubscriptionRegistry {
     const s = this.get(id);
     if (!s.inflight || s.inflight.offset !== offset) throw new Error("not inflight");
     const nextCount = s.inflight.deliverCount + 1;
-    if (nextCount >= 1) {
+    if (nextCount > s.maxDeliver) {
       s.inflight = undefined;
       s.pending = undefined;
       s.committed = offset;
