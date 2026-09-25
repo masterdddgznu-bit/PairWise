@@ -1,20 +1,25 @@
 import type { LeaseRecord } from "./lease.js";
 
-/** Single-resource lease state — stub holds nothing. */
 export class ResourceLeaseState {
-  getActiveLease(_now: number): LeaseRecord | null {
+  private lease: LeaseRecord | null = null;
+
+  getActiveLease(now: number): LeaseRecord | null {
+    const lease = this.lease;
+    if (lease !== null && now < lease.expireAt) {
+      return lease;
+    }
     return null;
   }
 
   getRawLease(): LeaseRecord | null {
-    return null;
+    return this.lease;
   }
 
-  setLease(_lease: LeaseRecord): void {
-    /* no-op */
+  setLease(lease: LeaseRecord): void {
+    this.lease = lease;
   }
 
   clear(): void {
-    /* no-op */
+    this.lease = null;
   }
 }

@@ -2,8 +2,13 @@ import { VirtualClock } from "./clock.js";
 import { LeaseManager } from "./lease_manager.js";
 
 export class Client {
+  private readonly writes = new Map<
+    string,
+    { token: number; payload: string; clientId: string }
+  >();
+
   constructor(
-    private readonly clientId: string,
+    public readonly clientId: string,
     private readonly manager: LeaseManager,
     private readonly clock: VirtualClock,
   ) {}
@@ -20,11 +25,20 @@ export class Client {
     this.manager.release(resourceId, this.clientId, token);
   }
 
-  fencedWrite(_resourceId: string, _token: number, _payload: string): void {
-    /* no-op */
+  fencedWrite(resourceId: string, token: number, payload: string): void {
+    this.manager.validateFencedWrite(resourceId, this.clientId, token);
+    this.writes.set(resourceId, {
+      token,
+      payload,
+      clientId: this.clientId,
+    });
   }
 
-  lastWrite(_resourceId: string): null | { token: number; payload: string; clientId: string } {
-    return null;
+  lastWrite(resourceId: string): null | {
+    token: number;
+    payload: string;
+    clientId: string;
+  } {
+    return this.writes.get(resourceId) ?? null;
   }
 }
