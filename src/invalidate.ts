@@ -18,12 +18,22 @@ export class Invalidator {
     root.generation += 1;
     root.result = undefined;
     this.cache.invalidate(runId, rootId);
-    // Only touches direct dependents today; deeper DAG nodes may keep old results.
-    for (const dep of graph.dependents(rootId)) {
-      this.cache.invalidate(runId, dep);
-      if (steps[dep].state === "succeeded") {
-        // state/result left as-is
+    // Transitively invalidate every downstream step: cached results are
+    // dropped and succeeded steps must recompute against the new generation.
+    const visited = new Set<string>([rootId]);
+    const queue = [...graph.dependents(rootId)];
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      if (visited.has(id)) continue;
+      visited.add(id);
+      this.cache.invalidate(runId, id);
+      const st = steps[id];
+      if (st.state === "succeeded") {
+        st.state = "pending";
+        st.result = undefined;
+        st.lastError = undefined;
       }
+      queue.push(...graph.dependents(id));
     }
   }
 }

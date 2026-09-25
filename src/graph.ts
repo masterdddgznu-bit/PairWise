@@ -73,12 +73,12 @@ export class Graph {
     genOf: (id: string) => number,
     needGen: (dep: string) => number,
   ): boolean {
-    if (stateOf(id) !== "pending" && stateOf(id) !== "failed") return false;
+    if (stateOf(id) !== "pending") return false;
     for (const d of this.deps(id)) {
       if (stateOf(d) !== "succeeded") return false;
-      // Incomplete: does not require genOf(d) == needGen(d)
-      void needGen;
-      void genOf;
+      // Committed result must match the predecessor's current generation;
+      // a bumped generation (retry) invalidates the old result as input.
+      if (genOf(d) !== needGen(d)) return false;
     }
     return true;
   }

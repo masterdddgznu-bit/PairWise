@@ -112,7 +112,7 @@ export class Engine {
     for (const st of Object.values(run.steps)) {
       if (st.state === "failed" && st.nextRetryAt !== undefined && st.nextRetryAt <= this.now) {
         this.invalidator.bumpAndInvalidate(run.runId, graph, run.steps, st.id);
-        st.state = "pending";
+        st.state = this.sm.transition(st.state, "pending", run.cancelRequested);
         st.nextRetryAt = undefined;
         st.lastError = undefined;
       }
@@ -120,6 +120,8 @@ export class Engine {
 
     const ready = sched.runnable(run.steps, def.steps);
     for (const id of ready) {
+      // A handler may request cancel mid-tick; later steps must not start.
+      if (run.cancelRequested) break;
       this.runStep(run, def.steps.find((s) => s.id === id)!, handler, graph);
     }
 
@@ -142,9 +144,12 @@ export class Engine {
     const inputs: Record<string, string> = {};
     for (const d of stepDef.deps) {
       const dep = run.steps[d];
-      // Intentionally trust cache helper (bugs live in ResultCache / Graph.isReady).
       const cached = this.cache.get(run.runId, d, dep.generation);
-      const val = cached?.value ?? dep.result?.value;
+      const live =
+        dep.result && dep.result.generation === dep.generation
+          ? dep.result.value
+          : undefined;
+      const val = cached?.value ?? live;
       if (val === undefined) {
         this.executors.finishFailure(run.runId, st, "missing input");
         return;

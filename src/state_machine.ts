@@ -21,9 +21,12 @@ export class StateMachine {
   transition(
     from: StepState,
     to: StepState,
-    _cancelRequested: boolean,
+    cancelRequested: boolean,
   ): StepState {
     if (!this.can(from, to)) throw new Error(`bad transition ${from}->${to}`);
+    if (cancelRequested && from === "running" && to === "succeeded") {
+      throw new Error(`bad transition ${from}->${to} (cancel requested)`);
+    }
     return to;
   }
 }

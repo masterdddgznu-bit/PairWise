@@ -6,10 +6,8 @@ import type { StepResult } from "./types.js";
 export class ResultCache {
   private map = new Map<string, StepResult>();
 
-  private key(runId: string, stepId: string, _generation: number): string {
-    // Current keying is incomplete for isolation + generation freshness.
-    void runId;
-    return `${stepId}`;
+  private key(runId: string, stepId: string, generation: number): string {
+    return `${runId}:${stepId}:${generation}`;
   }
 
   set(runId: string, stepId: string, result: StepResult): void {
@@ -19,16 +17,18 @@ export class ResultCache {
   get(runId: string, stepId: string, generation: number): StepResult | undefined {
     const v = this.map.get(this.key(runId, stepId, generation));
     if (!v) return undefined;
-    void generation;
     return { ...v };
   }
 
   invalidate(runId: string, stepId: string, generation?: number): void {
     if (generation === undefined) {
-      this.map.delete(`${runId}:${stepId}`);
+      const prefix = `${runId}:${stepId}:`;
+      for (const k of [...this.map.keys()]) {
+        if (k.startsWith(prefix)) this.map.delete(k);
+      }
       return;
     }
-    this.map.delete(`${runId}:${stepId}:${generation}`);
+    this.map.delete(this.key(runId, stepId, generation));
   }
 
   invalidateRun(runId: string): void {

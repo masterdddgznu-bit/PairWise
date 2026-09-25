@@ -27,8 +27,12 @@ export class Executor {
     step: StepRuntime,
     value: string,
   ): void {
-    const cancelRequested = this.cancel.isRequested(runId);
-    step.state = this.sm.transition(step.state, "succeeded", cancelRequested);
+    if (this.cancel.isRequested(runId)) {
+      // Cancel arrived before commit: the success must not be committed.
+      step.state = this.sm.transition(step.state, "cancelled", true);
+      return;
+    }
+    step.state = this.sm.transition(step.state, "succeeded", false);
     step.result = { value, generation: step.generation };
     this.cache.set(runId, step.id, step.result);
   }
