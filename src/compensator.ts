@@ -13,7 +13,8 @@ export class Compensator {
 
   buildQueue(def: SagaDef, completedSteps: string[]): string[] {
     const labels: string[] = [];
-    for (const stepName of completedSteps) {
+    for (let i = completedSteps.length - 1; i >= 0; i--) {
+      const stepName = completedSteps[i]!;
       const step = def.steps.find((s) => s.name === stepName);
       labels.push(step?.compensate ?? stepName);
     }
@@ -28,7 +29,6 @@ export class Compensator {
   ): "done" | "pending" | "advanced" {
     if (inst.compensateQueue.length === 0) {
       inst.compensateQueue = this.buildQueue(def, inst.completedSteps);
-      inst.compensateIndex = 0;
     }
 
     if (inst.compensateIndex >= inst.compensateQueue.length) {

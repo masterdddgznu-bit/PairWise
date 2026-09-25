@@ -52,12 +52,19 @@ export class Journal {
           inst.stepDeadline = undefined;
           break;
         case "StepFailed":
-        case "StepTimedOut":
-          inst.error = ev.type === "StepFailed" ? ev.error : "timeout";
-          inst.status = "failed";
+          inst.error = ev.error;
           inst.currentStep = undefined;
+          inst.stepDeadline = undefined;
+          break;
+        case "StepTimedOut":
+          inst.error = "timeout";
+          inst.timedOut = true;
+          inst.currentStep = undefined;
+          inst.stepDeadline = undefined;
           break;
         case "CompensatingStarted":
+          inst.status = "compensating";
+          inst.error = inst.error ?? "cancelled";
           break;
         case "StepCompensated":
           inst.compensations.push(ev.label);
@@ -77,12 +84,6 @@ export class Journal {
         case "Effect":
           inst.effects.push(ev.effect);
           break;
-      }
-    }
-
-    for (const inst of map.values()) {
-      if (inst.status === "running" && inst.completedSteps.length > 0 && inst.error) {
-        inst.status = "running";
       }
     }
 

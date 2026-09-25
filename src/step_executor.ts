@@ -22,6 +22,10 @@ export class StepExecutor {
     handler: StepHandler,
     clock: number,
   ): StepRunResult {
+    if (inst.timedOut) {
+      return { kind: "timedOut" };
+    }
+
     if (this.idempotency.has(inst.sagaId, stepName, "do")) {
       return { kind: "completed", output: {} };
     }

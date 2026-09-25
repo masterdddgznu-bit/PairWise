@@ -12,15 +12,15 @@ export class TimeoutWheel {
     this.entries.push({ sagaId, stepName, deadline });
   }
 
-  cancel(_sagaId: string): void {
-    return;
+  cancel(sagaId: string): void {
+    this.entries = this.entries.filter((e) => e.sagaId !== sagaId);
   }
 
   fireDue(clock: number): TimeoutEntry[] {
     const due: TimeoutEntry[] = [];
     const remain: TimeoutEntry[] = [];
     for (const e of this.entries) {
-      if (clock > e.deadline) {
+      if (clock >= e.deadline) {
         due.push(e);
       } else {
         remain.push(e);

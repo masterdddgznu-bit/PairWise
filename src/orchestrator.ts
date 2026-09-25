@@ -68,34 +68,28 @@ export class SagaEngine {
       const inst = this.instances.get(entry.sagaId);
       if (!inst || inst.status !== "running") continue;
       if (inst.currentStep === entry.stepName) {
-        inst.timedOut = true;
-        this.journal.append({
-          type: "StepTimedOut",
-          sagaId: inst.sagaId,
-          stepName: entry.stepName,
-          at: now,
-        });
-        this.beginCompensate(inst, now, inst.error ?? "timeout");
+        this.executor.markTimedOut(inst, entry.stepName, now);
+        this.beginCompensate(inst, now, "timeout");
       }
     }
 
-    const ids = [...this.instances.keys()];
-    if (ids.length === 0) return;
-    const sagaId = ids[0]!;
-    const inst = this.instances.get(sagaId)!;
-
-    if (inst.status === "running") {
-      this.driveForward(inst, now);
-    } else if (inst.status === "compensating") {
-      this.driveCompensate(inst, now);
+    for (const inst of this.instances.values()) {
+      if (inst.status === "running") {
+        this.driveForward(inst, now);
+      } else if (inst.status === "compensating") {
+        this.driveCompensate(inst, now);
+      }
     }
   }
 
   cancel(sagaId: string): void {
     const inst = this.instances.get(sagaId);
     if (!inst) throw new Error(`unknown saga: ${sagaId}`);
-    if (inst.status === "completed" || inst.status === "aborted") return;
+    if (inst.status !== "running") return;
 
+    this.timeouts.cancel(sagaId);
+    inst.currentStep = undefined;
+    inst.stepDeadline = undefined;
     inst.status = "compensating";
     inst.error = "cancelled";
     this.journal.append({
@@ -131,12 +125,19 @@ export class SagaEngine {
   crash(): void {
     this.instances.clear();
     this.timeouts.rebuild([]);
-    this.idempotency.clear();
   }
 
   recover(): void {
     this.instances = this.journal.rebuildInstances();
     this.timeouts.rebuild([]);
+    for (const ev of this.journal.all()) {
+      if (ev.type !== "Effect") continue;
+      if (ev.effect.startsWith("do:")) {
+        this.idempotency.mark(ev.sagaId, ev.effect.slice(3), "do");
+      } else if (ev.effect.startsWith("undo:")) {
+        this.idempotency.mark(ev.sagaId, ev.effect.slice(5), "undo");
+      }
+    }
     for (const inst of this.instances.values()) {
       if (inst.status === "running" && inst.currentStep && inst.stepDeadline !== undefined) {
         this.timeouts.register(inst.sagaId, inst.currentStep, inst.stepDeadline);
@@ -157,72 +158,81 @@ export class SagaEngine {
     const handlers = this.registry.getHandlers(inst.defName);
     if (!def || !handlers) return;
 
-    while (inst.stepIndex < def.steps.length && inst.status === "running") {
-      const step = def.steps[inst.stepIndex]!;
-      if (!inst.currentStep) {
-        inst.currentStep = step.name;
-        inst.stepDeadline = now + step.timeout;
-        inst.timedOut = false;
+    if (inst.stepIndex >= def.steps.length) {
+      inst.status = "completed";
+      this.journal.append({ type: "SagaCompleted", sagaId: inst.sagaId, at: now });
+      return;
+    }
+
+    const step = def.steps[inst.stepIndex]!;
+    if (!inst.currentStep) {
+      inst.currentStep = step.name;
+      inst.stepDeadline = now + step.timeout;
+      inst.timedOut = false;
+      this.journal.append({
+        type: "StepStarted",
+        sagaId: inst.sagaId,
+        stepName: step.name,
+        deadline: inst.stepDeadline,
+        at: now,
+      });
+      this.timeouts.register(inst.sagaId, step.name, inst.stepDeadline);
+    }
+
+    if (inst.stepDeadline !== undefined && now >= inst.stepDeadline) {
+      this.executor.markTimedOut(inst, step.name, now);
+      this.beginCompensate(inst, now, "timeout");
+      return;
+    }
+
+    const handler = handlers[step.name];
+    if (!handler) {
+      inst.error = `missing handler: ${step.name}`;
+      if (inst.completedSteps.length === 0) {
+        inst.status = "failed";
         this.journal.append({
-          type: "StepStarted",
+          type: "SagaFailed",
           sagaId: inst.sagaId,
-          stepName: step.name,
-          deadline: inst.stepDeadline,
+          error: inst.error,
           at: now,
         });
-        this.timeouts.register(inst.sagaId, step.name, inst.stepDeadline);
+      } else {
+        this.beginCompensate(inst, now, inst.error);
       }
+      return;
+    }
 
-      const handler = handlers[step.name];
-      if (!handler) {
-        inst.error = `missing handler: ${step.name}`;
-        if (inst.completedSteps.length === 0) {
-          inst.status = "failed";
-          this.journal.append({
-            type: "SagaFailed",
-            sagaId: inst.sagaId,
-            error: inst.error,
-            at: now,
-          });
-        } else {
-          this.beginCompensate(inst, now, inst.error);
-        }
-        return;
-      }
-
-      const result = this.executor.runForward(inst, step.name, handler, now);
-      if (result.kind === "pending") return;
-      if (result.kind === "failed") {
+    const result = this.executor.runForward(inst, step.name, handler, now);
+    if (result.kind === "pending") return;
+    if (result.kind === "failed") {
+      this.journal.append({
+        type: "StepFailed",
+        sagaId: inst.sagaId,
+        stepName: step.name,
+        error: result.error,
+        at: now,
+      });
+      if (inst.completedSteps.length === 0) {
+        inst.status = "failed";
         this.journal.append({
-          type: "StepFailed",
+          type: "SagaFailed",
           sagaId: inst.sagaId,
-          stepName: step.name,
           error: result.error,
           at: now,
         });
-        if (inst.completedSteps.length === 0) {
-          inst.status = "failed";
-          this.journal.append({
-            type: "SagaFailed",
-            sagaId: inst.sagaId,
-            error: result.error,
-            at: now,
-          });
-        } else {
-          this.beginCompensate(inst, now, result.error);
-        }
-        return;
+      } else {
+        this.beginCompensate(inst, now, result.error);
       }
-      if (result.kind === "timedOut") {
-        this.beginCompensate(inst, now, "timeout");
-        return;
-      }
+      return;
+    }
+    if (result.kind === "timedOut") {
+      this.beginCompensate(inst, now, "timeout");
+      return;
+    }
 
-      if (inst.stepIndex >= def.steps.length) {
-        inst.status = "completed";
-        this.journal.append({ type: "SagaCompleted", sagaId: inst.sagaId, at: now });
-        return;
-      }
+    if (inst.stepIndex >= def.steps.length) {
+      inst.status = "completed";
+      this.journal.append({ type: "SagaCompleted", sagaId: inst.sagaId, at: now });
     }
   }
 
