@@ -20,11 +20,13 @@ export class Client {
     this.manager.release(resourceId, this.clientId, token);
   }
 
-  fencedWrite(_resourceId: string, _token: number, _payload: string): void {
-    /* no-op */
+  fencedWrite(resourceId: string, token: number, payload: string): void {
+    this.manager.fencedWrite(resourceId, this.clientId, token, payload);
   }
 
-  lastWrite(_resourceId: string): null | { token: number; payload: string; clientId: string } {
-    return null;
+  lastWrite(
+    resourceId: string,
+  ): null | { token: number; payload: string; clientId: string } {
+    return this.manager.lastWrite(resourceId);
   }
 }
