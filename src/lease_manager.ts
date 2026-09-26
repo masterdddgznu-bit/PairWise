@@ -1,11 +1,9 @@
 import type { VirtualClock } from "./clock.js";
 import type { JobStore } from "./job_store.js";
 import type { Journal } from "./journal.js";
+import type { JobRecord } from "./types.js";
 
-/**
- * Lease claim / renew / expire.
- * Bugs: expiry uses `>`; steal reuses token; heartbeat does not extend deadline.
- */
+/** Lease claim / renew / expire with strictly increasing fencing tokens. */
 export class LeaseManager {
   constructor(
     private readonly clock: VirtualClock,
@@ -14,15 +12,22 @@ export class LeaseManager {
     private readonly leaseTtl: number,
   ) {}
 
-  /** Assign lease to a pending job; buggy steal path reuses lastClaimToken. */
+  /** True while `job` is running and its lease has not reached its deadline. */
+  private isLive(job: JobRecord, now: number): boolean {
+    if (job.status !== "running") return false;
+    if (job.leaseDeadline === undefined) return false;
+    return now < job.leaseDeadline;
+  }
+
+  /** Assign a fresh, strictly increasing lease token to a pending job. */
   claimJob(jobId: string, workerId: string): number {
     const job = this.store.get(jobId);
     if (!job) throw new Error(`unknown job ${jobId}`);
+    if (job.status !== "pending") {
+      throw new Error(`job ${jobId} is not claimable`);
+    }
 
-    // Buggy: do not bump token on re-claim / steal — reuse lastClaimToken if any.
-    const token =
-      job.lastClaimToken > 0 ? job.lastClaimToken : job.lastClaimToken + 1;
-    const nextLast = Math.max(job.lastClaimToken, token);
+    const token = job.lastClaimToken + 1;
     const deadline = this.clock.now() + this.leaseTtl;
 
     this.store.update(jobId, {
@@ -30,7 +35,7 @@ export class LeaseManager {
       owner: workerId,
       leaseToken: token,
       leaseDeadline: deadline,
-      lastClaimToken: nextLast,
+      lastClaimToken: token,
       retryAt: undefined,
     });
     this.journal.append({
@@ -43,27 +48,26 @@ export class LeaseManager {
     return token;
   }
 
-  /** Buggy: validates owner+token but does not extend leaseDeadline. */
+  /** Extend the deadline when the caller holds the current, non-expired lease. */
   renew(workerId: string, jobId: string, leaseToken: number): boolean {
     const job = this.store.get(jobId);
     if (!job) return false;
-    if (job.status !== "running") return false;
-    if (job.owner !== workerId) return false;
-    if (job.leaseToken !== leaseToken) return false;
-    // Intentionally missing: leaseDeadline = now + ttl
+    if (!this.matches(workerId, jobId, leaseToken)) return false;
+    const deadline = this.clock.now() + this.leaseTtl;
+    this.store.update(jobId, { leaseDeadline: deadline });
     return true;
   }
 
+  /** Fencing check: current owner, current token, and a non-expired lease. */
   matches(workerId: string, jobId: string, leaseToken: number): boolean {
     const job = this.store.get(jobId);
     if (!job) return false;
-    if (job.status !== "running") return false;
     if (job.owner !== workerId) return false;
     if (job.leaseToken !== leaseToken) return false;
-    return true;
+    return this.isLive(job, this.clock.now());
   }
 
-  /** Buggy: expires only when now > deadline (misses equality boundary). */
+  /** Expire leases at now >= deadline (equality included). */
   expireDue(): void {
     const now = this.clock.now();
     for (const job of this.store.list()) {

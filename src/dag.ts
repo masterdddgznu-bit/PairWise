@@ -38,16 +38,12 @@ export class DagGuard {
     }
   }
 
-  /** Buggy: treats any non-pending dep as satisfied (failed/running count as ok). */
+  /** A pending job is ready iff every dependency has succeeded. */
   isReady(job: JobRecord): boolean {
     if (job.status !== "pending") return false;
     for (const d of job.deps) {
       const dep = this.store.get(d);
-      if (!dep) return false;
-      if (dep.status === "pending" || dep.status === "retry_wait") {
-        return false;
-      }
-      // running / failed / succeeded all treated as "present" — wrong for failed/running
+      if (!dep || dep.status !== "succeeded") return false;
     }
     return true;
   }
