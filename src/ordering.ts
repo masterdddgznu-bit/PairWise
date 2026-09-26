@@ -9,8 +9,6 @@ export class KeyOrderingGate {
     const priors = this.outbox
       .listByKey(msg.key)
       .filter((m) => m.offset < msg.offset);
-    return priors.every(
-      (m) => m.status === "published" || m.status === "in_flight",
-    );
+    return priors.every((m) => m.status === "published");
   }
 }
