@@ -14,10 +14,7 @@ export type SchedulerOptions = {
   maxAttempts?: number;
 };
 
-/**
- * Facade over DAG job scheduling with leases, retries, and crash recovery.
- * Buggy crash/recover re-applies completed effects from the journal.
- */
+/** Facade over DAG job scheduling with leases, retries, and crash recovery. */
 export class Scheduler {
   readonly clock: VirtualClock;
   private readonly store = new JobStore();
@@ -125,11 +122,13 @@ export class Scheduler {
     return [...this.effectsLog];
   }
 
-  /** Buggy: clears job store into empty; recover rebuilds AND re-pushes effects. */
+  /**
+   * Drop volatile runtime state. The journal, persisted job semantics and the
+   * already-emitted effects survive; recover() rebuilds memory from the log.
+   */
   crash(): void {
     this.volatileEpoch += 1;
     this.store.clear();
-    // effects intentionally kept so recover can duplicate them
   }
 
   recover(): void {
@@ -169,12 +168,9 @@ export class Scheduler {
 
     this.store.replaceAll([...byId.values()]);
 
-    // Buggy: re-append effects for every completed job seen in journal
-    for (const ev of this.journal.list()) {
-      if (ev.type === "JobCompleted") {
-        this.effectsLog.push(`done:${ev.work}`);
-      }
-    }
+    // Restart fencing tokens above every token ever journaled so a stale
+    // holder from before the crash can never match a post-recovery lease.
+    this.leases.syncTokenSeq();
   }
 
   private applyEvent(
