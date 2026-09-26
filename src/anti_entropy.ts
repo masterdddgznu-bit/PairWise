@@ -1,10 +1,20 @@
 import type { Replica } from "./replica.js";
 
-/** Pull missing updates by comparing version vectors — stub no-op. */
+/** Pull missing operations from one replica into another. */
 export function syncReplica(_from: Replica, _to: Replica): void {
-  /* stub */
+  if (_from === _to) return;
+
+  for (const op of _from.ops()) {
+    if (!_to.hasOp(op.replicaId, op.counter)) {
+      _to.applyRemote(op);
+    }
+  }
 }
 
 export function syncAllPairs(replicas: Replica[]): void {
-  void replicas;
+  for (const source of replicas) {
+    for (const target of replicas) {
+      syncReplica(source, target);
+    }
+  }
 }

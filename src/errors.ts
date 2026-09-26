@@ -11,3 +11,17 @@ export class InvalidReplicaError extends CausalKvError {
     this.name = "InvalidReplicaError";
   }
 }
+
+export class InvalidClusterError extends CausalKvError {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidClusterError";
+  }
+}
+
+export class InvalidOperationError extends CausalKvError {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidOperationError";
+  }
+}
