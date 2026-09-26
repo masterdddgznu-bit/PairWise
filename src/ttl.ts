@@ -1,25 +1,28 @@
 import type { VirtualClock } from "./clock.js";
 
-/**
- * TTL index — starter stub.
- * putTtl / tick need to be completed and wired from RevStore.
- */
+/** TTL index mapping keys to their absolute expiration time. */
 export class TtlIndex {
-  set(_key: string, _expireAt: number): void {
-    throw new Error("ttl set not implemented");
+  private readonly expirations = new Map<string, number>();
+
+  set(key: string, expireAt: number): void {
+    this.expirations.set(key, expireAt);
   }
 
-  clear(_key: string): void {
-    // base put/delete may call clear; keep as harmless no-op
+  clear(key: string): void {
+    this.expirations.delete(key);
   }
 
   /** Keys whose expireAt <= now. */
-  expiredKeys(_now: number): string[] {
-    return [];
+  expiredKeys(now: number): string[] {
+    const expired: string[] = [];
+    for (const [key, expireAt] of this.expirations) {
+      if (expireAt <= now) expired.push(key);
+    }
+    return expired.sort();
   }
 
-  /** Helper reserved for feature work. */
-  schedule(_clock: VirtualClock, _key: string, _ttlMs: number): void {
-    throw new Error("ttl schedule not implemented");
+  /** Set expiration to `clock.now() + ttlMs`. */
+  schedule(clock: VirtualClock, key: string, ttlMs: number): void {
+    this.set(key, clock.now() + ttlMs);
   }
 }

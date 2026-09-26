@@ -73,14 +73,18 @@ export class RevStore {
   }
 
   putTtl(key: string, value: string, ttlMs: number): number {
-    // Feature incomplete: must set TTL via TtlIndex after write.
-    void ttlMs;
-    throw new Error("putTtl not implemented");
+    const revision = this.put(key, value);
+    this.ttl.schedule(this.clock, key, ttlMs);
+    return revision;
   }
 
   tick(): void {
-    // Feature incomplete: expire TTL keys.
-    throw new Error("tick not implemented");
+    const now = this.clock.now();
+    for (const key of this.ttl.expiredKeys(now)) {
+      // delete() clears the TTL entry, bumps revision, appends history,
+      // and notifies watches.
+      this.delete(key);
+    }
   }
 
   watch(prefix: string, fromRevision: number): string {
