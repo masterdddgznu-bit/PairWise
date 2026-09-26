@@ -1,11 +1,16 @@
 import type { QuotaConfig } from "./types.js";
 
-/** Period quota — not implemented on starter. */
+/** Period quota limiter. */
 export class QuotaLimiter {
   private readonly byId = new Map<string, QuotaConfig>();
 
-  set(_clientId: string, _max: number, _periodMs: number, _now: number): void {
-    throw new Error("setQuota not implemented");
+  set(clientId: string, max: number, periodMs: number, now: number): void {
+    this.byId.set(clientId, {
+      max,
+      periodMs,
+      periodStart: now,
+      used: 0,
+    });
   }
 
   has(clientId: string): boolean {
@@ -16,19 +21,41 @@ export class QuotaLimiter {
     this.byId.delete(clientId);
   }
 
-  tryConsume(_clientId: string, _now: number): boolean {
-    throw new Error("quota tryConsume not implemented");
+  private roll(cfg: QuotaConfig, now: number): void {
+    if (now - cfg.periodStart >= cfg.periodMs) {
+      cfg.periodStart = now;
+      cfg.used = 0;
+    }
   }
 
-  canConsume(_clientId: string, _now: number): boolean {
-    throw new Error("quota canConsume not implemented");
+  tryConsume(clientId: string, now: number): boolean {
+    const cfg = this.byId.get(clientId);
+    if (!cfg) return false;
+    this.roll(cfg, now);
+    if (cfg.used >= cfg.max) return false;
+    cfg.used += 1;
+    return true;
   }
 
-  remaining(_clientId: string, _now: number): number {
-    throw new Error("quotaRemaining not implemented");
+  canConsume(clientId: string, now: number): boolean {
+    const cfg = this.byId.get(clientId);
+    if (!cfg) return false;
+    const copy = { ...cfg };
+    this.roll(copy, now);
+    return copy.used < copy.max;
   }
 
-  refund(_clientId: string, _n: number, _now: number): void {
-    throw new Error("quota refund not implemented");
+  remaining(clientId: string, now: number): number {
+    const cfg = this.byId.get(clientId);
+    if (!cfg) return 0;
+    this.roll(cfg, now);
+    return Math.max(0, cfg.max - cfg.used);
+  }
+
+  refund(clientId: string, n: number, now: number): void {
+    const cfg = this.byId.get(clientId);
+    if (!cfg) return;
+    this.roll(cfg, now);
+    cfg.used = Math.max(0, cfg.used - n);
   }
 }

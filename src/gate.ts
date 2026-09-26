@@ -1,7 +1,7 @@
 import { batchAllow as runBatch } from "./batch.js";
 import { CircuitBreaker } from "./circuit.js";
 import { VirtualClock } from "./clock.js";
-import { UnknownClientError } from "./errors.js";
+import { CircuitOpenError, UnknownClientError } from "./errors.js";
 import { EventLog } from "./events.js";
 import { QuotaLimiter } from "./quota.js";
 import { TokenBuckets } from "./tokens.js";
@@ -52,11 +52,35 @@ export class RateGate {
       throw new UnknownClientError(`Unknown client: ${clientId}`);
     }
     const now = this.clock.now();
-    // Feature incomplete: circuit / token / quota / events not wired.
-    const ok = this.tokens.has(clientId)
-      ? this.tokens.tryAllow(clientId, now)
-      : this.windows.tryAllow(clientId, now);
-    return ok;
+    if (this.circuits.checkOpen(clientId, now)) {
+      this.events.append("circuit_open", clientId, now);
+      throw new CircuitOpenError(`Circuit is open for client: ${clientId}`);
+    }
+    const useTokens = this.tokens.has(clientId);
+    const rateOk = useTokens
+      ? this.tokens.canAllow(clientId, now)
+      : this.windows.canAllow(clientId, now);
+    const quotaOk = this.quotas.has(clientId)
+      ? this.quotas.canConsume(clientId, now)
+      : true;
+    if (rateOk && quotaOk) {
+      if (useTokens) {
+        this.tokens.tryAllow(clientId, now);
+      } else {
+        this.windows.tryAllow(clientId, now);
+      }
+      if (this.quotas.has(clientId)) {
+        this.quotas.tryConsume(clientId, now);
+      }
+      this.circuits.onSuccess(clientId);
+      this.events.append("allow", clientId, now);
+      return true;
+    }
+    this.events.append("deny", clientId, now);
+    if (this.circuits.onFailure(clientId, now)) {
+      this.events.append("circuit_open", clientId, now);
+    }
+    return false;
   }
 
   remaining(clientId: string): number {
@@ -122,7 +146,15 @@ export class RateGate {
     if (!this.windows.has(clientId)) {
       throw new UnknownClientError(`Unknown client: ${clientId}`);
     }
-    throw new Error("refund not implemented");
+    const now = this.clock.now();
+    if (this.tokens.has(clientId)) {
+      this.tokens.refund(clientId, n, now);
+    } else {
+      this.windows.refund(clientId, n, now);
+    }
+    if (this.quotas.has(clientId)) {
+      this.quotas.refund(clientId, n, now);
+    }
   }
 
   compact(beforeSeq: number): void {
