@@ -1,8 +1,8 @@
-/** Whether group-commit deadline has been reached — stub always false. */
+/** Whether the group-commit deadline has been reached. */
 export function shouldFlush(
-  _now: number,
-  _firstEnqueueAt: number | null,
-  _delay: number,
+  now: number,
+  firstEnqueueAt: number | null,
+  delay: number,
 ): boolean {
-  return false;
+  return firstEnqueueAt !== null && now >= firstEnqueueAt + delay;
 }

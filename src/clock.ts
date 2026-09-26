@@ -1,4 +1,4 @@
-/** Logical clock — stub is functional for API consistency. */
+/** Deterministic logical clock used instead of wall-clock time. */
 export class VirtualClock {
   private t = 0;
 
