@@ -65,7 +65,7 @@ export class RevStore {
   }
 
   getAt(key: string, revision: number): VersionedValue | null {
-    return this.historyLog.getAt(key, revision);
+    return this.historyLog.getAt(key, revision, this.data.get(key) ?? null);
   }
 
   history(key: string): HistoryRecord[] {
@@ -73,14 +73,24 @@ export class RevStore {
   }
 
   putTtl(key: string, value: string, ttlMs: number): number {
-    // Feature incomplete: must set TTL via TtlIndex after write.
-    void ttlMs;
-    throw new Error("putTtl not implemented");
+    const revision = this.revisions.next();
+    this.data.set(key, { value, revision });
+    this.ttl.schedule(this.clock, key, ttlMs);
+    this.historyLog.append(key, revision, value);
+    this.watches.notify({ type: "put", key, value, revision });
+    return revision;
   }
 
   tick(): void {
-    // Feature incomplete: expire TTL keys.
-    throw new Error("tick not implemented");
+    const now = this.clock.now();
+    for (const key of this.ttl.expiredKeys(now)) {
+      this.ttl.clear(key);
+      if (!this.data.has(key)) continue;
+      const revision = this.revisions.next();
+      this.data.delete(key);
+      this.historyLog.append(key, revision, null);
+      this.watches.notify({ type: "delete", key, value: null, revision });
+    }
   }
 
   watch(prefix: string, fromRevision: number): string {

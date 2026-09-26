@@ -3,8 +3,7 @@ import type { HistoryRecord, VersionedValue } from "./types.js";
 
 /**
  * In-memory per-key history.
- * Starter: append works for the base KV; getAt / compact / public history
- * listing are not finished yet.
+ * Supports point-in-time reads and compaction below a watermark.
  */
 export class HistoryLog {
   private readonly byKey = new Map<string, HistoryRecord[]>();
@@ -19,26 +18,61 @@ export class HistoryLog {
     list.push({ revision, value });
   }
 
-  /** @throws always on starter — feature not implemented */
-  getAt(_key: string, _revision: number): VersionedValue | null {
-    throw new Error("getAt not implemented");
+  /**
+   * Value of `key` as of `revision` (latest change with revision <= the
+   * requested one). `current` is the live value used as a fallback when the
+   * relevant records have been compacted away.
+   * @throws CompactedError when revision is strictly below the watermark.
+   */
+  getAt(
+    key: string,
+    revision: number,
+    current: VersionedValue | null = null,
+  ): VersionedValue | null {
+    if (revision < this.watermark) {
+      throw new CompactedError();
+    }
+    const list = this.byKey.get(key);
+    if (list) {
+      for (let i = list.length - 1; i >= 0; i--) {
+        const rec = list[i]!;
+        if (rec.revision <= revision) {
+          return rec.value === null
+            ? null
+            : { value: rec.value, revision: rec.revision };
+        }
+      }
+    }
+    if (current && current.revision <= revision) {
+      return { value: current.value, revision: current.revision };
+    }
+    return null;
   }
 
-  /** @throws always on starter — feature not implemented */
-  history(_key: string): HistoryRecord[] {
-    throw new Error("history not implemented");
+  /** Full retained history for a key, ascending by revision. */
+  history(key: string): HistoryRecord[] {
+    const list = this.byKey.get(key);
+    if (!list) return [];
+    return list.map((rec) => ({ revision: rec.revision, value: rec.value }));
   }
 
-  /** @throws always on starter — feature not implemented */
-  compact(_beforeRevision: number): void {
-    throw new Error("compact not implemented");
+  /** Drop records strictly below `beforeRevision` and raise the watermark. */
+  compact(beforeRevision: number): void {
+    for (const [key, list] of this.byKey) {
+      const kept = list.filter((rec) => rec.revision >= beforeRevision);
+      if (kept.length === 0) {
+        this.byKey.delete(key);
+      } else if (kept.length !== list.length) {
+        this.byKey.set(key, kept);
+      }
+    }
+    if (beforeRevision > this.watermark) {
+      this.watermark = beforeRevision;
+    }
   }
 
-  /** Internal: watermark accessor (unused on starter). */
+  /** Internal: watermark accessor. */
   getWatermark(): number {
     return this.watermark;
   }
 }
-
-// silence unused import on starter (CompactedError reserved for feature work)
-void CompactedError;
