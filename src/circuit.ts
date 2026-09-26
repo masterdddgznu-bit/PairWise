@@ -1,11 +1,16 @@
 import type { CircuitConfig } from "./types.js";
 
-/** Circuit breaker — not implemented on starter. */
+/** Per-client circuit breaker driven by consecutive denials. */
 export class CircuitBreaker {
   private readonly byId = new Map<string, CircuitConfig>();
 
-  set(_clientId: string, _failThreshold: number, _cooldownMs: number): void {
-    throw new Error("setCircuit not implemented");
+  set(clientId: string, failThreshold: number, cooldownMs: number): void {
+    this.byId.set(clientId, {
+      failThreshold,
+      cooldownMs,
+      consecutiveFails: 0,
+      openUntil: null,
+    });
   }
 
   has(clientId: string): boolean {
@@ -17,19 +22,34 @@ export class CircuitBreaker {
   }
 
   /**
-   * If open, should throw CircuitOpenError (after recording).
-   * Returns true if currently open (caller throws).
+   * Returns true while the circuit is open. Once the cooldown has
+   * elapsed the breaker half-closes and a fresh verdict is allowed.
    */
-  checkOpen(_clientId: string, _now: number): boolean {
+  checkOpen(clientId: string, now: number): boolean {
+    const cfg = this.byId.get(clientId);
+    if (!cfg || cfg.openUntil === null) return false;
+    if (now < cfg.openUntil) return true;
+    cfg.openUntil = null;
+    cfg.consecutiveFails = 0;
     return false;
   }
 
-  onSuccess(_clientId: string): void {
-    // no-op on starte
+  onSuccess(clientId: string): void {
+    const cfg = this.byId.get(clientId);
+    if (!cfg) return;
+    cfg.consecutiveFails = 0;
+    cfg.openUntil = null;
   }
 
-  /** Returns true if this call caused the circuit to newly open. */
-  onFailure(_clientId: string, _now: number): boolean {
+  /** Records a denial; returns true once the failure threshold is reached. */
+  onFailure(clientId: string, now: number): boolean {
+    const cfg = this.byId.get(clientId);
+    if (!cfg) return false;
+    cfg.consecutiveFails += 1;
+    if (cfg.consecutiveFails >= cfg.failThreshold) {
+      cfg.openUntil = now + cfg.cooldownMs;
+      return true;
+    }
     return false;
   }
 }
