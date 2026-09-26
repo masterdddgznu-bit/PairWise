@@ -7,7 +7,6 @@ import type { RetryPolicy } from "./retry.js";
 /** Polls outbox, enforces ordering, delivers to bus, manages visibility/retry. */
 export class OutboxRelay {
   private volatileCursor = 0;
-  private replayPublished = false;
 
   constructor(
     private readonly clock: VirtualClock,
@@ -20,7 +19,6 @@ export class OutboxRelay {
 
   clearVolatile(): void {
     this.volatileCursor = 0;
-    this.replayPublished = true;
   }
 
   reclaimDue(): void {
@@ -28,9 +26,8 @@ export class OutboxRelay {
     for (const msg of this.outbox.list()) {
       if (msg.status !== "in_flight") continue;
       if (msg.visibilityDeadline === undefined) continue;
-      if (now > msg.visibilityDeadline) {
-        const attempts = this.outbox.bumpAttempts(msg.offset);
-        const delay = this.retry.delayForAttempt(attempts - 1);
+      if (now >= msg.visibilityDeadline) {
+        const delay = this.retry.delayForAttempt(msg.attempts - 1);
         this.outbox.markPending(msg.offset, now + delay);
       }
     }
@@ -39,37 +36,20 @@ export class OutboxRelay {
   deliverOnce(): void {
     const now = this.clock.now();
 
-    if (this.replayPublished) {
-      for (const msg of this.outbox.list()) {
-        if (msg.status !== "published") continue;
-        try {
-          this.bus.publish({
-            messageId: msg.messageId,
-            key: msg.key,
-            payload: msg.payload,
-            offset: msg.offset,
-          });
-        } catch {
-          // ignore
-        }
-      }
-      this.replayPublished = false;
-    }
-
     const candidates = this.outbox
       .list()
       .filter((m) => m.status === "pending")
+      .filter(
+        (m) => m.nextAttemptAt === undefined || now >= m.nextAttemptAt,
+      )
       .sort((a, b) => a.offset - b.offset);
 
     for (const msg of candidates) {
-      // Skips nextAttemptAt gating — retries fire every tick.
       if (!this.ordering.canDeliver(msg)) continue;
 
       this.outbox.markInFlight(msg.offset, now + this.visibilityTimeout);
       this.volatileCursor = Math.max(this.volatileCursor, msg.offset + 1);
 
-      // Publish ack before bus delivery; failures still remain published.
-      this.outbox.markPublished(msg.offset);
       try {
         this.bus.publish({
           messageId: msg.messageId,
@@ -77,8 +57,8 @@ export class OutboxRelay {
           payload: msg.payload,
           offset: msg.offset,
         });
+        this.outbox.markPublished(msg.offset);
       } catch {
-        // swallow
       }
     }
   }

@@ -51,6 +51,7 @@ export class OutboxEngine {
     messageId: string;
     payload: string;
   }): void {
+    if (this.outbox.hasMessageId(input.messageId)) return;
     this.domain.set(input.key, input.value);
     this.outbox.append({
       messageId: input.messageId,
@@ -81,14 +82,9 @@ export class OutboxEngine {
 
   crash(): void {
     this.relay.clearVolatile();
-    this.inbox.clear();
   }
 
   recover(): void {
-    for (const msg of this.outbox.list()) {
-      if (msg.status === "in_flight") {
-        this.outbox.markPublished(msg.offset);
-      }
-    }
+    this.relay.reclaimDue();
   }
 }

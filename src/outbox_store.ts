@@ -22,6 +22,10 @@ export class OutboxStore {
     return { ...row };
   }
 
+  hasMessageId(messageId: string): boolean {
+    return this.rows.some((r) => r.messageId === messageId);
+  }
+
   findByMessageId(messageId: string): OutboxMessage | undefined {
     const found = this.rows.find((r) => r.messageId === messageId);
     return found ? { ...found } : undefined;
@@ -37,15 +41,16 @@ export class OutboxStore {
 
   markInFlight(offset: number, visibilityDeadline: number): void {
     const row = this.rows.find((r) => r.offset === offset);
-    if (!row) return;
+    if (!row || row.status !== "pending") return;
     row.status = "in_flight";
     row.visibilityDeadline = visibilityDeadline;
     row.nextAttemptAt = undefined;
+    row.attempts += 1;
   }
 
   markPublished(offset: number): void {
     const row = this.rows.find((r) => r.offset === offset);
-    if (!row) return;
+    if (!row || row.status !== "in_flight") return;
     row.status = "published";
     row.visibilityDeadline = undefined;
     row.nextAttemptAt = undefined;
@@ -53,7 +58,7 @@ export class OutboxStore {
 
   markPending(offset: number, nextAttemptAt: number): void {
     const row = this.rows.find((r) => r.offset === offset);
-    if (!row) return;
+    if (!row || row.status !== "in_flight") return;
     row.status = "pending";
     row.visibilityDeadline = undefined;
     row.nextAttemptAt = nextAttemptAt;

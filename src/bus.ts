@@ -11,8 +11,16 @@ export class MessageBus {
   }
 
   publish(msg: BusMessage): void {
+    const failures: unknown[] = [];
     for (const handler of this.handlers.values()) {
-      handler(msg);
+      try {
+        handler(msg);
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length > 0) {
+      throw new AggregateError(failures, "One or more bus handlers failed");
     }
   }
 }

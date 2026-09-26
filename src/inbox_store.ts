@@ -1,17 +1,15 @@
 /** Consumer-side dedupe of applied messageIds. */
 export class InboxStore {
-  private seen = new Set<string>();
-
-  private key(_consumerId: string, messageId: string): string {
-    return messageId;
-  }
+  private seen = new Map<string, Set<string>>();
 
   has(consumerId: string, messageId: string): boolean {
-    return this.seen.has(this.key(consumerId, messageId));
+    return this.seen.get(consumerId)?.has(messageId) ?? false;
   }
 
   mark(consumerId: string, messageId: string): void {
-    this.seen.add(this.key(consumerId, messageId));
+    const consumerSeen = this.seen.get(consumerId) ?? new Set<string>();
+    consumerSeen.add(messageId);
+    this.seen.set(consumerId, consumerSeen);
   }
 
   clear(): void {
