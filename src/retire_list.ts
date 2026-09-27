@@ -1,24 +1,43 @@
 import type { RetireRecord } from "./types.js";
+import { DuplicateRetireError } from "./errors.js";
 
-/** Pending retire queue — stub. */
+/** Pending retire queue, kept in retire order. */
 export class RetireList {
-  add(_id: string, _epoch: number): void {
-    /* stub */
+  private readonly items: RetireRecord[] = [];
+  private readonly ids = new Set<string>();
+
+  add(id: string, epoch: number): void {
+    if (this.ids.has(id)) {
+      throw new DuplicateRetireError(id);
+    }
+    this.ids.add(id);
+    this.items.push({ id, epoch, eligibleAt: null });
   }
 
-  has(_id: string): boolean {
-    return false;
+  has(id: string): boolean {
+    return this.ids.has(id);
   }
 
   records(): RetireRecord[] {
-    return [];
+    return this.items;
   }
 
-  removeIds(_ids: string[]): void {
-    /* stub */
+  removeIds(ids: string[]): void {
+    if (ids.length === 0) {
+      return;
+    }
+    const gone = new Set(ids);
+    for (const id of gone) {
+      this.ids.delete(id);
+    }
+    for (let i = this.items.length - 1; i >= 0; i -= 1) {
+      if (gone.has(this.items[i].id)) {
+        this.items.splice(i, 1);
+      }
+    }
   }
 
   size(): number {
-    return 0;
+    return this.items.length;
   }
 }

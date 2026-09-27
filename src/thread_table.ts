@@ -1,34 +1,55 @@
-/** Registered threads and pin epochs — stub. */
+import { AlreadyPinnedError, InvalidThreadError } from "./errors.js";
+
+/** Registered threads and their pinned epochs. */
 export class ThreadTable {
+  private readonly registered = new Set<number>();
+  private readonly pins = new Map<number, number>();
+
   constructor(private readonly n: number) {
-    void this.n;
+    for (let id = 0; id < n; id += 1) {
+      this.registered.add(id);
+    }
   }
 
-  has(_id: number): boolean {
-    return false;
+  has(id: number): boolean {
+    return this.registered.has(id);
   }
 
-  pin(_id: number, _epoch: number): void {
-    /* stub */
+  private requireRegistered(id: number): void {
+    if (!this.registered.has(id)) {
+      throw new InvalidThreadError(id);
+    }
   }
 
-  unpin(_id: number): boolean {
-    return false;
+  pin(id: number, epoch: number): void {
+    this.requireRegistered(id);
+    if (this.pins.has(id)) {
+      throw new AlreadyPinnedError(id);
+    }
+    this.pins.set(id, epoch);
   }
 
-  pinnedEpoch(_id: number): number | null {
-    return null;
+  unpin(id: number): boolean {
+    this.requireRegistered(id);
+    return this.pins.delete(id);
   }
 
-  unregister(_id: number): void {
-    /* stub */
+  pinnedEpoch(id: number): number | null {
+    this.requireRegistered(id);
+    return this.pins.has(id) ? (this.pins.get(id) as number) : null;
+  }
+
+  unregister(id: number): void {
+    this.requireRegistered(id);
+    this.pins.delete(id);
+    this.registered.delete(id);
   }
 
   registeredIds(): number[] {
-    return [];
+    return [...this.registered].sort((a, b) => a - b);
   }
 
   pinnedEpochs(): number[] {
-    return [];
+    return [...this.pins.values()];
   }
 }
