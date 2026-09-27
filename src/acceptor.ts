@@ -6,6 +6,19 @@ export class Acceptor {
   acceptedBallot = 0;
   acceptedValue: string | null = null;
   constructor(id: number) { this.id = id; }
-  prepare(_ballot: number): PromiseReply { return { ok: false }; }
-  accept(_ballot: number, _value: string): boolean { return false; }
+  prepare(ballot: number): PromiseReply {
+    if (!this.online || ballot <= this.promised) return { ok: false };
+    this.promised = ballot;
+    return {
+      ok: true,
+      acceptedBallot: this.acceptedBallot,
+      acceptedValue: this.acceptedValue,
+    };
+  }
+  accept(ballot: number, value: string): boolean {
+    if (!this.online || ballot < this.promised) return false;
+    this.acceptedBallot = ballot;
+    this.acceptedValue = value;
+    return true;
+  }
 }
