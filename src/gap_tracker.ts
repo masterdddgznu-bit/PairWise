@@ -1,9 +1,9 @@
-/** Tracks when the bottom gap started — stub. */
+/** Tracks when the bottom gap started. */
 export class GapTracker {
   private since: number | null = null;
 
-  mark(_now: number): void {
-    /* stub */
+  mark(now: number): void {
+    if (this.since === null) this.since = now;
   }
 
   clear(): void {
@@ -14,7 +14,7 @@ export class GapTracker {
     return this.since;
   }
 
-  timedOut(_now: number, _timeout: number): boolean {
-    return false;
+  timedOut(now: number, timeout: number): boolean {
+    return this.since !== null && now >= this.since + timeout;
   }
 }
