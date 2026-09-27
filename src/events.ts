@@ -1,33 +1,57 @@
 import type { QueueEvent, QueueEventType } from "./types.js";
+import { CompactedError } from "./errors.js";
 
 export class EventLog {
   private seq = 0;
   private watermark = 0;
+  private readonly log: QueueEvent[] = [];
+  private readonly watchers = new Map<string, number>();
+  private watchCounter = 0;
 
   currentSeq(): number {
     return this.seq;
   }
 
-  append(_type: QueueEventType, _messageId: string, _at: number): QueueEvent {
-    // starter: no-op events so base tests stay quiet
+  append(type: QueueEventType, messageId: string, at: number): QueueEvent {
     this.seq += 1;
-    return { seq: this.seq, type: _type, messageId: _messageId, at: _at };
+    const event: QueueEvent = { seq: this.seq, type, messageId, at };
+    this.log.push(event);
+    return event;
   }
 
-  watch(_fromSeq: number): string {
-    throw new Error("watch not implemented");
+  watch(fromSeq: number): string {
+    if (fromSeq < this.watermark) {
+      throw new CompactedError();
+    }
+    this.watchCounter += 1;
+    const watchId = `w${this.watchCounter}`;
+    this.watchers.set(watchId, fromSeq);
+    return watchId;
   }
 
-  pollWatch(_watchId: string): QueueEvent[] {
-    throw new Error("pollWatch not implemented");
+  pollWatch(watchId: string): QueueEvent[] {
+    const cursor = this.watchers.get(watchId);
+    if (cursor === undefined) return [];
+    const out = this.log.filter((e) => e.seq > cursor);
+    if (out.length > 0) {
+      this.watchers.set(watchId, out[out.length - 1]!.seq);
+    }
+    return out;
   }
 
-  unwatch(_watchId: string): void {
-    throw new Error("unwatch not implemented");
+  unwatch(watchId: string): void {
+    this.watchers.delete(watchId);
   }
 
-  compact(_beforeSeq: number): void {
-    throw new Error("compact not implemented");
+  compact(beforeSeq: number): void {
+    if (beforeSeq > this.watermark) {
+      this.watermark = beforeSeq;
+    }
+    let drop = 0;
+    while (drop < this.log.length && this.log[drop]!.seq < beforeSeq) {
+      drop += 1;
+    }
+    if (drop > 0) this.log.splice(0, drop);
   }
 
   getWatermark(): number {
