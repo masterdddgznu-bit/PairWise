@@ -1,18 +1,28 @@
 /** Preparing deadlines — stub. */
 export class TimeoutTable {
-  set(_txId: string, _deadline: number): void {
-    /* stub */
+  private deadlines = new Map<string, number>();
+
+  set(txId: string, deadline: number): void {
+    this.deadlines.set(txId, deadline);
   }
 
-  get(_txId: string): number | undefined {
-    return undefined;
+  get(txId: string): number | undefined {
+    return this.deadlines.get(txId);
   }
 
-  delete(_txId: string): void {
-    /* stub */
+  delete(txId: string): void {
+    this.deadlines.delete(txId);
   }
 
-  due(_now: number): string[] {
-    return [];
+  due(now: number): string[] {
+    const out: string[] = [];
+    for (const [txId, deadline] of this.deadlines) {
+      if (now >= deadline) out.push(txId);
+    }
+    return out;
+  }
+
+  clear(): void {
+    this.deadlines.clear();
   }
 }

@@ -2,39 +2,52 @@ import type { TxStatus, WriteOp } from "./types.js";
 
 /** In-memory tx records — stub. */
 export class CoordinatorState {
-  begin(_txId: string): void {
-    /* stub */
+  private statuses = new Map<string, TxStatus>();
+  private writeBuf = new Map<string, WriteOp[]>();
+  private involved = new Map<string, number[]>();
+
+  begin(txId: string): void {
+    this.statuses.set(txId, "open");
+    this.writeBuf.set(txId, []);
   }
 
-  status(_txId: string): TxStatus | undefined {
-    return undefined;
+  status(txId: string): TxStatus | undefined {
+    return this.statuses.get(txId);
   }
 
-  setStatus(_txId: string, _s: TxStatus): void {
-    /* stub */
+  setStatus(txId: string, s: TxStatus): void {
+    this.statuses.set(txId, s);
   }
 
-  addWrite(_txId: string, _op: WriteOp): void {
-    /* stub */
+  addWrite(txId: string, op: WriteOp): void {
+    const ops = this.writeBuf.get(txId);
+    if (!ops) return;
+    const existing = ops.find(
+      (o) => o.participantId === op.participantId && o.key === op.key,
+    );
+    if (existing) existing.value = op.value;
+    else ops.push(op);
   }
 
-  writes(_txId: string): WriteOp[] {
-    return [];
+  writes(txId: string): WriteOp[] {
+    return this.writeBuf.get(txId) ?? [];
   }
 
   clear(): void {
-    /* stub */
+    this.statuses.clear();
+    this.writeBuf.clear();
+    this.involved.clear();
   }
 
-  setParticipants(_txId: string, _ids: number[]): void {
-    /* stub */
+  setParticipants(txId: string, ids: number[]): void {
+    this.involved.set(txId, ids);
   }
 
-  participants(_txId: string): number[] {
-    return [];
+  participants(txId: string): number[] {
+    return this.involved.get(txId) ?? [];
   }
 
   knownIds(): string[] {
-    return [];
+    return [...this.statuses.keys()];
   }
 }

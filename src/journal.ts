@@ -4,8 +4,8 @@ import type { JournalEntry } from "./types.js";
 export class Journal {
   private log: JournalEntry[] = [];
 
-  append(_e: JournalEntry): void {
-    /* stub */
+  append(e: JournalEntry): void {
+    this.log.push(e);
   }
 
   entries(): readonly JournalEntry[] {
