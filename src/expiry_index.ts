@@ -1,11 +1,10 @@
 import type { Entry } from "./types.js";
 
-/** Helpers over entries ordered by expiry — stub. */
+/** Helpers over entries ordered by expiry. */
 export function sortByExpiry(entries: Entry[]): Entry[] {
-  void entries;
-  return [];
+  return [...entries].sort((a, b) => a.expireAt - b.expireAt || a.seq - b.seq);
 }
 
-export function dueEntries(entries: Entry[], _now: number): Entry[] {
-  return [];
+export function dueEntries(entries: Entry[], now: number): Entry[] {
+  return sortByExpiry(entries.filter((e) => e.expireAt <= now));
 }
