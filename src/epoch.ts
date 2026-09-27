@@ -1,6 +1,6 @@
 import type { ThreadTable } from "./thread_table.js";
 
-/** Global epoch — stub. */
+/** Global epoch tracker. */
 export class EpochTracker {
   private g = 0;
 
@@ -9,10 +9,15 @@ export class EpochTracker {
   }
 
   bump(): number {
+    this.g += 1;
     return this.g;
   }
 
-  minPinned(_threads: ThreadTable): number | null {
-    return null;
+  minPinned(threads: ThreadTable): number | null {
+    const epochs = threads.pinnedEpochs();
+    if (epochs.length === 0) {
+      return null;
+    }
+    return Math.min(...epochs);
   }
 }

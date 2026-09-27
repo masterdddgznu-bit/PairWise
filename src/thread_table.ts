@@ -1,34 +1,63 @@
-/** Registered threads and pin epochs — stub. */
+import { AlreadyPinnedError, InvalidThreadError } from "./errors.js";
+
+/** Registered threads and pin epochs. */
 export class ThreadTable {
+  private readonly pinned = new Map<number, number | null>();
+
   constructor(private readonly n: number) {
-    void this.n;
+    for (let id = 0; id < n; id += 1) {
+      this.pinned.set(id, null);
+    }
   }
 
-  has(_id: number): boolean {
-    return false;
+  has(id: number): boolean {
+    return this.pinned.has(id);
   }
 
-  pin(_id: number, _epoch: number): void {
-    /* stub */
+  pin(id: number, epoch: number): void {
+    this.assertValid(id);
+    if (this.pinned.get(id) !== null) {
+      throw new AlreadyPinnedError(id);
+    }
+    this.pinned.set(id, epoch);
   }
 
-  unpin(_id: number): boolean {
-    return false;
+  unpin(id: number): boolean {
+    this.assertValid(id);
+    if (this.pinned.get(id) === null) {
+      return false;
+    }
+    this.pinned.set(id, null);
+    return true;
   }
 
-  pinnedEpoch(_id: number): number | null {
-    return null;
+  pinnedEpoch(id: number): number | null {
+    this.assertValid(id);
+    return this.pinned.get(id) ?? null;
   }
 
-  unregister(_id: number): void {
-    /* stub */
+  unregister(id: number): void {
+    this.assertValid(id);
+    this.pinned.delete(id);
   }
 
   registeredIds(): number[] {
-    return [];
+    return [...this.pinned.keys()];
   }
 
   pinnedEpochs(): number[] {
-    return [];
+    const epochs: number[] = [];
+    for (const epoch of this.pinned.values()) {
+      if (epoch !== null) {
+        epochs.push(epoch);
+      }
+    }
+    return epochs;
+  }
+
+  private assertValid(id: number): void {
+    if (!this.pinned.has(id)) {
+      throw new InvalidThreadError(id);
+    }
   }
 }

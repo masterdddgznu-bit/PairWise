@@ -2,16 +2,31 @@ import type { RetireRecord } from "./types.js";
 import type { ThreadTable } from "./thread_table.js";
 
 export function isUnblocked(record: RetireRecord, threads: ThreadTable): boolean {
-  void record;
-  void threads;
-  return false;
+  for (const epoch of threads.pinnedEpochs()) {
+    if (epoch <= record.epoch) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export function collectReclaimable(
-  _records: RetireRecord[],
-  _threads: ThreadTable,
-  _now: number,
-  _delay: number,
+  records: RetireRecord[],
+  threads: ThreadTable,
+  now: number,
+  delay: number,
 ): string[] {
-  return [];
+  const ready: string[] = [];
+  for (const record of records) {
+    if (!isUnblocked(record, threads)) {
+      continue;
+    }
+    if (record.eligibleAt === null) {
+      record.eligibleAt = now;
+    }
+    if (now >= record.eligibleAt + delay) {
+      ready.push(record.id);
+    }
+  }
+  return ready;
 }
