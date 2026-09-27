@@ -1,8 +1,12 @@
 import type { LeaseEvent, LeaseEventType } from "./types.js";
+import { CompactedError } from "./errors.js";
 
 export class EventLog {
   private seq = 0;
   private watermark = 0;
+  private readonly log: LeaseEvent[] = [];
+  private readonly watches = new Map<string, number>();
+  private watchCounter = 0;
 
   currentSeq(): number {
     return this.seq;
@@ -16,23 +20,51 @@ export class EventLog {
     at: number,
   ): LeaseEvent {
     this.seq += 1;
-    return { seq: this.seq, type, pool, resourceId, holderId, at };
+    const event: LeaseEvent = {
+      seq: this.seq,
+      type,
+      pool,
+      resourceId,
+      holderId,
+      at,
+    };
+    this.log.push(event);
+    return event;
   }
 
-  watch(_fromSeq: number): string {
-    throw new Error("watch not implemented");
+  watch(fromSeq: number): string {
+    if (fromSeq < this.watermark) {
+      throw new CompactedError(
+        `fromSeq ${fromSeq} is below watermark ${this.watermark}`,
+      );
+    }
+    this.watchCounter += 1;
+    const watchId = `watch-${this.watchCounter}`;
+    this.watches.set(watchId, fromSeq);
+    return watchId;
   }
 
-  pollWatch(_watchId: string): LeaseEvent[] {
-    throw new Error("pollWatch not implemented");
+  pollWatch(watchId: string): LeaseEvent[] {
+    const cursor = this.watches.get(watchId);
+    if (cursor === undefined) return [];
+    const events = this.log.filter((e) => e.seq > cursor);
+    if (events.length > 0) {
+      this.watches.set(watchId, events[events.length - 1]!.seq);
+    }
+    return events;
   }
 
-  unwatch(_watchId: string): void {
-    throw new Error("unwatch not implemented");
+  unwatch(watchId: string): void {
+    this.watches.delete(watchId);
   }
 
-  compact(_beforeSeq: number): void {
-    throw new Error("compact not implemented");
+  compact(beforeSeq: number): void {
+    let kept = 0;
+    for (const e of this.log) {
+      if (e.seq >= beforeSeq) this.log[kept++] = e;
+    }
+    this.log.length = kept;
+    if (beforeSeq > this.watermark) this.watermark = beforeSeq;
   }
 
   getWatermark(): number {
