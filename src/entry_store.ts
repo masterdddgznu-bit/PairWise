@@ -1,24 +1,26 @@
 import type { Entry } from "./types.js";
 
-/** Key → entry map — stub. */
+/** Key → entry map. */
 export class EntryStore {
-  get(_key: string): Entry | undefined {
-    return undefined;
+  private readonly map = new Map<string, Entry>();
+
+  get(key: string): Entry | undefined {
+    return this.map.get(key);
   }
 
-  set(_entry: Entry): void {
-    /* stub */
+  set(entry: Entry): void {
+    this.map.set(entry.key, entry);
   }
 
-  delete(_key: string): boolean {
-    return false;
+  delete(key: string): boolean {
+    return this.map.delete(key);
   }
 
   values(): Entry[] {
-    return [];
+    return [...this.map.values()];
   }
 
   size(): number {
-    return 0;
+    return this.map.size;
   }
 }
