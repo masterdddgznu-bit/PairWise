@@ -1,11 +1,11 @@
 import type { JournalEntry } from "./types.js";
 
-/** Append-only coordinator journal — stub. */
+/** Append-only coordinator journal. */
 export class Journal {
   private log: JournalEntry[] = [];
 
-  append(_e: JournalEntry): void {
-    /* stub */
+  append(e: JournalEntry): void {
+    this.log.push(e);
   }
 
   entries(): readonly JournalEntry[] {

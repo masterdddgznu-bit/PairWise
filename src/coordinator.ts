@@ -1,40 +1,61 @@
 import type { TxStatus, WriteOp } from "./types.js";
 
-/** In-memory tx records — stub. */
+export type TxRecord = {
+  status: TxStatus;
+  writes: WriteOp[];
+  participants: number[];
+};
+
+/** In-memory transaction records kept by the coordinator. */
 export class CoordinatorState {
-  begin(_txId: string): void {
-    /* stub */
+  private readonly txs = new Map<string, TxRecord>();
+
+  begin(txId: string): void {
+    this.txs.set(txId, { status: "open", writes: [], participants: [] });
   }
 
-  status(_txId: string): TxStatus | undefined {
-    return undefined;
+  status(txId: string): TxStatus | undefined {
+    return this.txs.get(txId)?.status;
   }
 
-  setStatus(_txId: string, _s: TxStatus): void {
-    /* stub */
+  setStatus(txId: string, s: TxStatus): void {
+    this.txs.get(txId)!.status = s;
   }
 
-  addWrite(_txId: string, _op: WriteOp): void {
-    /* stub */
+  addWrite(txId: string, op: WriteOp): void {
+    const record = this.txs.get(txId)!;
+    const existing = record.writes.find(
+      (w) => w.participantId === op.participantId && w.key === op.key,
+    );
+    if (existing) {
+      existing.value = op.value;
+    } else {
+      record.writes.push(op);
+    }
   }
 
-  writes(_txId: string): WriteOp[] {
-    return [];
+  writes(txId: string): WriteOp[] {
+    return this.txs.get(txId)?.writes ?? [];
   }
 
   clear(): void {
-    /* stub */
+    this.txs.clear();
   }
 
-  setParticipants(_txId: string, _ids: number[]): void {
-    /* stub */
+  setParticipants(txId: string, ids: number[]): void {
+    this.txs.get(txId)!.participants = [...ids];
   }
 
-  participants(_txId: string): number[] {
-    return [];
+  participants(txId: string): number[] {
+    return this.txs.get(txId)?.participants ?? [];
   }
 
   knownIds(): string[] {
-    return [];
+    return [...this.txs.keys()];
+  }
+
+  /** Insert a reconstructed record (used during recovery). */
+  restore(txId: string, status: TxStatus, participants: number[]): void {
+    this.txs.set(txId, { status, writes: [], participants: [...participants] });
   }
 }

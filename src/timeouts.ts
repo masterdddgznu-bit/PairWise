@@ -1,18 +1,31 @@
-/** Preparing deadlines — stub. */
+/** Deadline table for transactions in the `preparing` phase. */
 export class TimeoutTable {
-  set(_txId: string, _deadline: number): void {
-    /* stub */
+  private readonly deadlines = new Map<string, number>();
+
+  set(txId: string, deadline: number): void {
+    this.deadlines.set(txId, deadline);
   }
 
-  get(_txId: string): number | undefined {
-    return undefined;
+  get(txId: string): number | undefined {
+    return this.deadlines.get(txId);
   }
 
-  delete(_txId: string): void {
-    /* stub */
+  delete(txId: string): void {
+    this.deadlines.delete(txId);
   }
 
-  due(_now: number): string[] {
-    return [];
+  clear(): void {
+    this.deadlines.clear();
+  }
+
+  /** Tx ids whose deadline is at or before `now`. */
+  due(now: number): string[] {
+    const ids: string[] = [];
+    for (const [txId, deadline] of this.deadlines) {
+      if (now >= deadline) {
+        ids.push(txId);
+      }
+    }
+    return ids;
   }
 }
