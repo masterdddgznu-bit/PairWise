@@ -1,13 +1,33 @@
 export class TtlIndex {
-  set(_pool: string, _resourceId: string, _expireAt: number): void {
-    throw new Error("ttl set not implemented");
+  private readonly entries = new Map<
+    string,
+    { pool: string; resourceId: string; expireAt: number }
+  >();
+
+  private key(pool: string, resourceId: string): string {
+    return `${pool}${resourceId}`;
   }
 
-  clear(_pool: string, _resourceId: string): void {
-    // no-op on starte
+  set(pool: string, resourceId: string, expireAt: number): void {
+    this.entries.set(this.key(pool, resourceId), {
+      pool,
+      resourceId,
+      expireAt,
+    });
   }
 
-  expired(_now: number): Array<{ pool: string; resourceId: string }> {
-    return [];
+  clear(pool: string, resourceId: string): void {
+    this.entries.delete(this.key(pool, resourceId));
+  }
+
+  expired(now: number): Array<{ pool: string; resourceId: string }> {
+    const out: Array<{ pool: string; resourceId: string }> = [];
+    for (const [key, entry] of this.entries) {
+      if (entry.expireAt <= now) {
+        out.push({ pool: entry.pool, resourceId: entry.resourceId });
+        this.entries.delete(key);
+      }
+    }
+    return out;
   }
 }

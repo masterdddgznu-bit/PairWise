@@ -38,12 +38,7 @@ export class LeasePool {
     free.expireAt =
       opts?.ttlMs !== undefined ? this.clock.now() + opts.ttlMs : null;
     if (free.expireAt !== null) {
-      // Feature incomplete on starter — ttl.set throws; only call when ttl used.
-      try {
-        this.ttl.set(pool, free.resourceId, free.expireAt);
-      } catch {
-        // starter: ignore ttl index
-      }
+      this.ttl.set(pool, free.resourceId, free.expireAt);
     }
     const now = this.clock.now();
     this.events.append("acquire", pool, free.resourceId, holderId, now);
@@ -89,15 +84,26 @@ export class LeasePool {
     holderId: string,
     ttlMs: number,
   ): boolean {
-    void pool;
-    void resourceId;
-    void holderId;
-    void ttlMs;
-    throw new Error("renew not implemented");
+    const r = this.pools.find(pool, resourceId);
+    if (!r || r.holderId === null || r.holderId !== holderId) return false;
+    r.expireAt = this.clock.now() + ttlMs;
+    this.ttl.set(pool, resourceId, r.expireAt);
+    this.events.append("renew", pool, resourceId, holderId, this.clock.now());
+    return true;
   }
 
   tick(): void {
-    throw new Error("tick not implemented");
+    const now = this.clock.now();
+    for (const { pool, resourceId } of this.ttl.expired(now)) {
+      const r = this.pools.find(pool, resourceId);
+      if (!r || r.holderId === null) continue;
+      if (r.expireAt === null || r.expireAt > now) continue;
+      const holderId = r.holderId;
+      r.holderId = null;
+      r.token = 0;
+      r.expireAt = null;
+      this.events.append("expire", pool, resourceId, holderId, now);
+    }
   }
 
   steal(
@@ -106,11 +112,31 @@ export class LeasePool {
     newHolderId: string,
     opts?: AcquireOpts,
   ): Lease | null {
-    void pool;
-    void resourceId;
-    void newHolderId;
-    void opts;
-    throw new Error("steal not implemented");
+    const r = this.pools.find(pool, resourceId);
+    if (!r || r.holderId === null) return null;
+    const token = this.tokens.next();
+    r.holderId = newHolderId;
+    r.token = token;
+    r.expireAt =
+      opts?.ttlMs !== undefined ? this.clock.now() + opts.ttlMs : null;
+    this.ttl.clear(pool, resourceId);
+    if (r.expireAt !== null) {
+      this.ttl.set(pool, resourceId, r.expireAt);
+    }
+    this.events.append(
+      "steal",
+      pool,
+      resourceId,
+      newHolderId,
+      this.clock.now(),
+    );
+    return {
+      pool,
+      resourceId,
+      holderId: newHolderId,
+      token,
+      expireAt: r.expireAt,
+    };
   }
 
   batchAcquire(
@@ -119,11 +145,13 @@ export class LeasePool {
     n: number,
     opts?: AcquireOpts,
   ): Lease[] {
-    void pool;
-    void holderId;
-    void n;
-    void opts;
-    throw new Error("batchAcquire not implemented");
+    const leases: Lease[] = [];
+    for (let i = 0; i < n; i++) {
+      const lease = this.acquire(pool, holderId, opts);
+      if (!lease) break;
+      leases.push(lease);
+    }
+    return leases;
   }
 
   currentSeq(): number {
