@@ -1,6 +1,6 @@
 import type { Message, WaitingItem } from "./types.js";
 
-/** Waiting queue — starter: FIFO only, ignores priority/delay. */
+/** Waiting queue — priority ordered (higher first), stable by enqueue seq. */
 export class WaitingQueue {
   private readonly items: WaitingItem[] = [];
   private seq = 0;
@@ -10,11 +10,26 @@ export class WaitingQueue {
     this.items.push({ ...msg, availableAt, seq: this.seq });
   }
 
-  /** Ready = availableAt <= now. Starter ignores priority. */
+  /** Ready = availableAt <= now; highest priority first, ties by seq. */
   takeReady(now: number): WaitingItem | null {
-    const idx = this.items.findIndex((i) => i.availableAt <= now);
-    if (idx < 0) return null;
-    const [item] = this.items.splice(idx, 1);
+    let best = -1;
+    for (let i = 0; i < this.items.length; i++) {
+      const it = this.items[i]!;
+      if (it.availableAt > now) continue;
+      if (best < 0) {
+        best = i;
+        continue;
+      }
+      const cur = this.items[best]!;
+      if (
+        it.priority > cur.priority ||
+        (it.priority === cur.priority && it.seq < cur.seq)
+      ) {
+        best = i;
+      }
+    }
+    if (best < 0) return null;
+    const [item] = this.items.splice(best, 1);
     return item ?? null;
   }
 

@@ -60,9 +60,7 @@ export class WorkQueue {
       enqueuedAt: now,
     };
     const delay = opts?.delayMs ?? 0;
-    // Starter: delay ignored (always available now) — feature must honor delayMs.
     const availableAt = delay > 0 ? now + delay : now;
-    // On starter path for base tests delay is 0.
     this.waiting.enqueue(msg, availableAt);
     this.events.append("enqueue", id, now);
     return id;
@@ -83,7 +81,7 @@ export class WorkQueue {
       this.visibilityTimeout === Number.POSITIVE_INFINITY
         ? Number.POSITIVE_INFINITY
         : now + this.visibilityTimeout;
-    this.inflight.put(msg, until);
+    this.inflight.put(msg, until, item.seq);
     this.events.append("dequeue", msg.id, now);
     return msg;
   }
@@ -96,8 +94,22 @@ export class WorkQueue {
   }
 
   nack(messageId: string): boolean {
-    void messageId;
-    throw new Error("nack not implemented");
+    const item = this.inflight.remove(messageId);
+    if (!item) return false;
+    const now = this.clock.now();
+    this.events.append("nack", messageId, now);
+    this.requeueOrDead(
+      {
+        id: item.id,
+        payload: item.payload,
+        priority: item.priority,
+        attempts: item.attempts + 1,
+        enqueuedAt: item.enqueuedAt,
+      },
+      item.seq,
+      now,
+    );
+    return true;
   }
 
   size(): number {
@@ -105,7 +117,31 @@ export class WorkQueue {
   }
 
   tick(): void {
-    throw new Error("tick not implemented");
+    const now = this.clock.now();
+    for (const item of this.inflight.expired(now)) {
+      this.events.append("expire", item.id, now);
+      this.requeueOrDead(
+        {
+          id: item.id,
+          payload: item.payload,
+          priority: item.priority,
+          attempts: item.attempts + 1,
+          enqueuedAt: item.enqueuedAt,
+        },
+        item.seq,
+        now,
+      );
+    }
+  }
+
+  /** @internal */
+  private requeueOrDead(msg: Message, seq: number, now: number): void {
+    if (msg.attempts >= this.maxAttempts) {
+      this.dlq.push(msg);
+      this.events.append("dead", msg.id, now);
+      return;
+    }
+    this.waiting.requeue({ ...msg, availableAt: now, seq });
   }
 
   deadLetters(): Message[] {
@@ -113,13 +149,22 @@ export class WorkQueue {
   }
 
   redrive(messageId: string): boolean {
-    void messageId;
-    throw new Error("redrive not implemented");
+    const msg = this.dlq.take(messageId);
+    if (!msg) return false;
+    const now = this.clock.now();
+    this.waiting.enqueue({ ...msg, attempts: 0 }, now);
+    this.events.append("redrive", messageId, now);
+    return true;
   }
 
   batchDequeue(n: number): Message[] {
-    void n;
-    throw new Error("batchDequeue not implemented");
+    const out: Message[] = [];
+    for (let i = 0; i < n; i++) {
+      const msg = this.dequeue();
+      if (!msg) break;
+      out.push(msg);
+    }
+    return out;
   }
 
   currentSeq(): number {

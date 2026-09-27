@@ -1,11 +1,11 @@
 import type { InflightItem, Message } from "./types.js";
 
-/** In-flight map — starter: no visibility expiry. */
+/** In-flight map with visibility-timeout expiry. */
 export class InflightMap {
   private readonly byId = new Map<string, InflightItem>();
 
-  put(msg: Message, visibleUntil: number): void {
-    this.byId.set(msg.id, { ...msg, visibleUntil });
+  put(msg: Message, visibleUntil: number, seq: number): void {
+    this.byId.set(msg.id, { ...msg, visibleUntil, seq });
   }
 
   get(id: string): InflightItem | undefined {
@@ -18,9 +18,16 @@ export class InflightMap {
     return v;
   }
 
-  /** Starter: never expires. */
-  expired(_now: number): InflightItem[] {
-    return [];
+  /** Remove and return items whose visibility deadline has passed. */
+  expired(now: number): InflightItem[] {
+    const out: InflightItem[] = [];
+    for (const [id, item] of this.byId) {
+      if (item.visibleUntil <= now) {
+        this.byId.delete(id);
+        out.push(item);
+      }
+    }
+    return out;
   }
 
   size(): number {

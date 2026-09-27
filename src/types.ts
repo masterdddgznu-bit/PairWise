@@ -34,4 +34,5 @@ export type WaitingItem = Message & {
 
 export type InflightItem = Message & {
   visibleUntil: number;
+  seq: number;
 };
