@@ -1,0 +1,10 @@
+export { VirtualClock } from "./clock.js";
+export { Paxos1 } from "./paxos1.js";
+export type { Paxos1Options } from "./paxos1.js";
+export { Acceptor } from "./acceptor.js";
+export { Proposer } from "./proposer.js";
+export { Learner } from "./learner.js";
+export { BallotAllocator } from "./ballot.js";
+export { majorityOf, hasQuorum } from "./quorum.js";
+export { Paxos1Error, InvalidValueError } from "./errors.js";
+export type { ProposalStatus, PromiseReply, Phase } from "./types.js";
