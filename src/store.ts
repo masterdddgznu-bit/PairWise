@@ -7,6 +7,10 @@ export class StoreAdapter {
     this.store = store;
   }
 
+  attached(): boolean {
+    return this.store !== null;
+  }
+
   get(key: string): string | null {
     return this.store ? this.store.get(key) : null;
   }
