@@ -1,13 +1,33 @@
+export type TtlState = Map<string, number>;
+
+/** key -> absolute expiry timestamp (per virtual clock). */
 export class TtlIndex {
-  set(_key: string, _expireAt: number): void {
-    throw new Error("ttl set not implemented");
+  private readonly expiresAt = new Map<string, number>();
+
+  set(key: string, expireAt: number): void {
+    this.expiresAt.set(key, expireAt);
   }
 
-  clear(_key: string): void {
-    // harmless no-op for base set
+  clear(key: string): void {
+    this.expiresAt.delete(key);
   }
 
-  expiredKeys(_now: number): string[] {
-    return [];
+  expiredKeys(now: number): string[] {
+    const keys: string[] = [];
+    for (const [key, at] of this.expiresAt) {
+      if (at <= now) keys.push(key);
+    }
+    return keys.sort();
+  }
+
+  clone(): TtlState {
+    return new Map(this.expiresAt);
+  }
+
+  replace(state: TtlState): void {
+    this.expiresAt.clear();
+    for (const [key, at] of state) {
+      this.expiresAt.set(key, at);
+    }
   }
 }

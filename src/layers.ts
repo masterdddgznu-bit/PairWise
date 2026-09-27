@@ -1,10 +1,13 @@
 import { LayerError, LayerExistsError } from "./errors.js";
 import type { LayerEntry, VersionedValue } from "./types.js";
 
-/**
- * Layer stack — starter: only `base` layer with working set/get/delete/list.
- * push/pop/setOn/deleteOn/tombstone overlay resolution unfinished.
- */
+export type LayerData = {
+  order: string[];
+  writeLayer: string;
+  data: Map<string, Map<string, LayerEntry>>;
+};
+
+/** Layer stack; `order` runs bottom -> top, top layer is the write layer. */
 export class LayerStack {
   /** bottom -> top */
   private order: string[] = ["base"];
@@ -23,78 +26,98 @@ export class LayerStack {
     return this.writeLayer;
   }
 
-  pushLayer(_name: string): void {
-    throw new Error("pushLayer not implemented");
+  pushLayer(name: string): void {
+    if (this.data.has(name)) {
+      throw new LayerExistsError(`Layer already exists: ${name}`);
+    }
+    this.order.push(name);
+    this.data.set(name, new Map());
+    this.writeLayer = name;
   }
 
   popLayer(): void {
-    throw new Error("popLayer not implemented");
+    if (this.order.length <= 1) {
+      throw new LayerError("Cannot pop the only layer (base)");
+    }
+    const name = this.order.pop()!;
+    this.data.delete(name);
+    this.writeLayer = this.order[this.order.length - 1];
   }
 
   setOn(layer: string, key: string, value: string, revision: number): void {
-    if (layer !== "base" || !this.data.has(layer)) {
-      // On starter, only base writes via set() path use internal setOnBase.
+    const map = this.data.get(layer);
+    if (!map) {
       throw new LayerError(`Unknown layer: ${layer}`);
     }
-    this.data.get(layer)!.set(key, { value, revision });
-  }
-
-  /** Internal helper used by base set/delete on starter. */
-  setOnBase(key: string, value: string | null, revision: number): void {
-    this.data.get("base")!.set(key, { value, revision });
+    map.set(key, { value, revision });
   }
 
   deleteOn(layer: string, key: string, revision: number): boolean {
-    if (layer !== this.writeLayer || layer !== "base") {
-      throw new Error("deleteOn not implemented");
+    const map = this.data.get(layer);
+    if (!map) {
+      throw new LayerError(`Unknown layer: ${layer}`);
     }
-    const m = this.data.get("base")!;
-    if (!m.has(key) || m.get(key)!.value === null) {
-      // For base-only starter resolve: treat missing as no-op delete.
-      if (!this.resolve(key)) return false;
-    }
-    m.set(key, { value: null, revision });
+    map.set(key, { value: null, revision });
     return true;
   }
 
   resolve(key: string): VersionedValue | null {
-    // Starter: only base, ignore tombstones as deletes.
-    const e = this.data.get("base")!.get(key);
-    if (!e || e.value === null) return null;
-    return { value: e.value, revision: e.revision };
+    for (let i = this.order.length - 1; i >= 0; i--) {
+      const entry = this.data.get(this.order[i])!.get(key);
+      if (entry) {
+        return entry.value === null
+          ? null
+          : { value: entry.value, revision: entry.revision };
+      }
+    }
+    return null;
   }
 
   listKeys(): string[] {
-    const keys: string[] = [];
-    for (const [k, e] of this.data.get("base")!) {
-      if (e.value !== null) keys.push(k);
+    const seen = new Set<string>();
+    const visible = new Set<string>();
+    for (let i = this.order.length - 1; i >= 0; i--) {
+      for (const [key, entry] of this.data.get(this.order[i])!) {
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (entry.value !== null) visible.add(key);
+      }
     }
-    return keys.sort();
+    return [...visible].sort();
   }
 
-  /** Deep clone maps for snapshot — stub. */
-  cloneData(): {
-    order: string[];
-    writeLayer: string;
-    data: Map<string, Map<string, LayerEntry>>;
-  } {
-    throw new Error("cloneData not implemented");
+  cloneData(): LayerData {
+    return {
+      order: [...this.order],
+      writeLayer: this.writeLayer,
+      data: this.copyData(this.data),
+    };
   }
 
-  replaceAll(_state: {
-    order: string[];
-    writeLayer: string;
-    data: Map<string, Map<string, LayerEntry>>;
-  }): void {
-    throw new Error("replaceAll not implemented");
+  replaceAll(state: LayerData): void {
+    this.order = [...state.order];
+    this.writeLayer = state.writeLayer;
+    this.data.clear();
+    for (const [name, map] of this.copyData(state.data)) {
+      this.data.set(name, map);
+    }
   }
 
   hasLayer(name: string): boolean {
     return this.data.has(name);
   }
 
-  // silence reserved errors on starte
-  reserved(): void {
-    void LayerExistsError;
+  private copyData(
+    source: Map<string, Map<string, LayerEntry>>,
+  ): Map<string, Map<string, LayerEntry>> {
+    const copy = new Map<string, Map<string, LayerEntry>>();
+    for (const [name, map] of source) {
+      const layerCopy = new Map<string, LayerEntry>();
+      for (const [key, entry] of map) {
+        layerCopy.set(key, { value: entry.value, revision: entry.revision });
+      }
+      copy.set(name, layerCopy);
+    }
+    return copy;
   }
 }

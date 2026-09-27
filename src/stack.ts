@@ -9,9 +9,8 @@ import type { SchemaKind, TxnOp, VersionedValue, WatchEvent } from "./types.js";
 import { WatchManager } from "./watch.js";
 
 /**
- * Hierarchical config stack.
- * Base single-layer set/get/delete/list/currentRevision work.
- * Feature methods wired to unfinished modules.
+ * Hierarchical config stack: layer overlay resolution, watches, TTL,
+ * transactions, snapshots, schema validation and compaction.
  */
 export class CfgStack {
   readonly clock: VirtualClock;
@@ -44,7 +43,7 @@ export class CfgStack {
     this.schemas.validate(key, value);
     this.ttl.clear(key);
     const revision = this.revisions.next();
-    this.layerStack.setOnBase(key, value, revision);
+    this.layerStack.setOn(this.layerStack.currentWriteLayer(), key, value, revision);
     this.watches.notify({ type: "set", key, value, revision });
     return revision;
   }
@@ -57,7 +56,7 @@ export class CfgStack {
     if (!this.layerStack.resolve(key)) return null;
     this.ttl.clear(key);
     const revision = this.revisions.next();
-    this.layerStack.setOnBase(key, null, revision);
+    this.layerStack.deleteOn(this.layerStack.currentWriteLayer(), key, revision);
     this.watches.notify({ type: "delete", key, value: null, revision });
     return revision;
   }
@@ -84,16 +83,32 @@ export class CfgStack {
   }
 
   deleteOn(layer: string, key: string): number | null {
-    throw new Error("deleteOn not implemented");
+    if (!this.layerStack.resolve(key)) return null;
+    this.ttl.clear(key);
+    const revision = this.revisions.next();
+    this.layerStack.deleteOn(layer, key, revision);
+    this.watches.notify({ type: "delete", key, value: null, revision });
+    return revision;
   }
 
   setTtl(key: string, value: string, ttlMs: number): number {
-    void ttlMs;
-    throw new Error("setTtl not implemented");
+    this.schemas.validate(key, value);
+    const revision = this.revisions.next();
+    const layer = this.layerStack.currentWriteLayer();
+    this.layerStack.setOn(layer, key, value, revision);
+    this.ttl.set(key, this.clock.now() + ttlMs);
+    this.watches.notify({ type: "set", key, value, revision });
+    return revision;
   }
 
   tick(): void {
-    throw new Error("tick not implemented");
+    const layer = this.layerStack.currentWriteLayer();
+    for (const key of this.ttl.expiredKeys(this.clock.now())) {
+      this.ttl.clear(key);
+      const revision = this.revisions.next();
+      this.layerStack.deleteOn(layer, key, revision);
+      this.watches.notify({ type: "delete", key, value: null, revision });
+    }
   }
 
   watch(prefix: string, fromRevision: number): string {
