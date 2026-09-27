@@ -2,9 +2,16 @@ import { LayerError, LayerExistsError } from "./errors.js";
 import type { LayerEntry, VersionedValue } from "./types.js";
 
 /**
- * Layer stack — starter: only `base` layer with working set/get/delete/list.
- * push/pop/setOn/deleteOn/tombstone overlay resolution unfinished.
+ * Layer stack with top-down overlay resolution. A non-null value in a
+ * higher layer shadows lower layers; a tombstone (null value) hides the key.
  */
+
+export type LayerState = {
+  order: string[];
+  writeLayer: string;
+  data: Map<string, Map<string, LayerEntry>>;
+};
+
 export class LayerStack {
   /** bottom -> top */
   private order: string[] = ["base"];
@@ -23,78 +30,103 @@ export class LayerStack {
     return this.writeLayer;
   }
 
-  pushLayer(_name: string): void {
-    throw new Error("pushLayer not implemented");
+  assertLayer(name: string): void {
+    if (!this.data.has(name)) {
+      throw new LayerError(`Unknown layer: ${name}`);
+    }
+  }
+
+  pushLayer(name: string): void {
+    if (this.data.has(name)) {
+      throw new LayerExistsError(`Layer already exists: ${name}`);
+    }
+    this.order.push(name);
+    this.data.set(name, new Map());
+    this.writeLayer = name;
   }
 
   popLayer(): void {
-    throw new Error("popLayer not implemented");
+    if (this.order.length <= 1) {
+      throw new LayerError("Cannot pop the base layer");
+    }
+    const name = this.order.pop()!;
+    this.data.delete(name);
+    this.writeLayer = this.order[this.order.length - 1];
   }
 
   setOn(layer: string, key: string, value: string, revision: number): void {
-    if (layer !== "base" || !this.data.has(layer)) {
-      // On starter, only base writes via set() path use internal setOnBase.
-      throw new LayerError(`Unknown layer: ${layer}`);
-    }
+    this.assertLayer(layer);
     this.data.get(layer)!.set(key, { value, revision });
   }
 
-  /** Internal helper used by base set/delete on starter. */
-  setOnBase(key: string, value: string | null, revision: number): void {
-    this.data.get("base")!.set(key, { value, revision });
+  /** Write a tombstone unconditionally (used by TTL expiry). */
+  tombstone(layer: string, key: string, revision: number): void {
+    this.assertLayer(layer);
+    this.data.get(layer)!.set(key, { value: null, revision });
   }
 
+  /**
+   * Write a tombstone on the given layer. Returns false when the key is not
+   * visible from any layer (nothing to delete) or is already tombstoned.
+   */
   deleteOn(layer: string, key: string, revision: number): boolean {
-    if (layer !== this.writeLayer || layer !== "base") {
-      throw new Error("deleteOn not implemented");
-    }
-    const m = this.data.get("base")!;
-    if (!m.has(key) || m.get(key)!.value === null) {
-      // For base-only starter resolve: treat missing as no-op delete.
-      if (!this.resolve(key)) return false;
-    }
-    m.set(key, { value: null, revision });
+    this.assertLayer(layer);
+    if (!this.resolve(key)) return false;
+    this.data.get(layer)!.set(key, { value: null, revision });
     return true;
   }
 
   resolve(key: string): VersionedValue | null {
-    // Starter: only base, ignore tombstones as deletes.
-    const e = this.data.get("base")!.get(key);
-    if (!e || e.value === null) return null;
-    return { value: e.value, revision: e.revision };
+    for (let i = this.order.length - 1; i >= 0; i--) {
+      const e = this.data.get(this.order[i])!.get(key);
+      if (e !== undefined) {
+        if (e.value === null) return null;
+        return { value: e.value, revision: e.revision };
+      }
+    }
+    return null;
   }
 
   listKeys(): string[] {
-    const keys: string[] = [];
-    for (const [k, e] of this.data.get("base")!) {
-      if (e.value !== null) keys.push(k);
+    const visible = new Map<string, VersionedValue>();
+    for (const layer of this.order) {
+      for (const [key, e] of this.data.get(layer)!) {
+        if (e.value === null) {
+          visible.delete(key);
+        } else {
+          visible.set(key, { value: e.value, revision: e.revision });
+        }
+      }
     }
-    return keys.sort();
+    return [...visible.keys()].sort();
   }
 
-  /** Deep clone maps for snapshot — stub. */
-  cloneData(): {
-    order: string[];
-    writeLayer: string;
-    data: Map<string, Map<string, LayerEntry>>;
-  } {
-    throw new Error("cloneData not implemented");
+  cloneState(): LayerState {
+    const data = new Map<string, Map<string, LayerEntry>>();
+    for (const [name, m] of this.data) {
+      const copy = new Map<string, LayerEntry>();
+      for (const [key, e] of m) {
+        copy.set(key, { value: e.value, revision: e.revision });
+      }
+      data.set(name, copy);
+    }
+    return { order: [...this.order], writeLayer: this.writeLayer, data };
   }
 
-  replaceAll(_state: {
-    order: string[];
-    writeLayer: string;
-    data: Map<string, Map<string, LayerEntry>>;
-  }): void {
-    throw new Error("replaceAll not implemented");
+  restoreState(state: LayerState): void {
+    this.data.clear();
+    for (const [name, m] of state.data) {
+      const copy = new Map<string, LayerEntry>();
+      for (const [key, e] of m) {
+        copy.set(key, { value: e.value, revision: e.revision });
+      }
+      this.data.set(name, copy);
+    }
+    this.order = [...state.order];
+    this.writeLayer = state.writeLayer;
   }
 
   hasLayer(name: string): boolean {
     return this.data.has(name);
-  }
-
-  // silence reserved errors on starte
-  reserved(): void {
-    void LayerExistsError;
   }
 }

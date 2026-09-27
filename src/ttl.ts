@@ -1,13 +1,30 @@
 export class TtlIndex {
-  set(_key: string, _expireAt: number): void {
-    throw new Error("ttl set not implemented");
+  private readonly expiresAt = new Map<string, number>();
+
+  set(key: string, expireAt: number): void {
+    this.expiresAt.set(key, expireAt);
   }
 
-  clear(_key: string): void {
-    // harmless no-op for base set
+  clear(key: string): void {
+    this.expiresAt.delete(key);
   }
 
-  expiredKeys(_now: number): string[] {
-    return [];
+  /** Keys whose expiry is due at or before `now`. */
+  dueKeys(now: number): string[] {
+    const due: Array<[number, string]> = [];
+    for (const [key, at] of this.expiresAt) {
+      if (at <= now) due.push([at, key]);
+    }
+    due.sort((a, b) => a[0] - b[0] || (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0));
+    return due.map(([, key]) => key);
+  }
+
+  cloneState(): Map<string, number> {
+    return new Map(this.expiresAt);
+  }
+
+  restoreState(state: Map<string, number>): void {
+    this.expiresAt.clear();
+    for (const [key, at] of state) this.expiresAt.set(key, at);
   }
 }
