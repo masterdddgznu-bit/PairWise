@@ -1,14 +1,17 @@
 import { VirtualClock } from "./clock.js";
+import { requireValidFence } from "./fence.js";
 import { LeaseManager } from "./lease.js";
 import type { LeaseInfo } from "./types.js";
 
 /**
- * Fenced key-value store with lease fencing (feature incomplete).
- * Base put/get/delete/has/keys/size work without clock.
+ * Fenced key-value store with lease fencing.
+ * Without a clock it behaves as a plain in-memory Map; with a VirtualClock,
+ * writes require a fence matching the current live lease.
  */
 export class FencedStore {
   private readonly map = new Map<string, string>();
   private readonly lease: LeaseManager | null;
+  private writerFence: number | undefined;
 
   constructor(clock?: VirtualClock) {
     this.lease = clock ? new LeaseManager(clock) : null;
@@ -16,10 +19,10 @@ export class FencedStore {
 
   put(key: string, value: string, fence?: number): void {
     if (this.lease !== null) {
-      if (fence === undefined) {
-        throw new Error("fenced put not implemented");
-      }
-      throw new Error("fenced put not implemented");
+      requireValidFence(this.lease, fence);
+      this.map.set(key, value);
+      this.writerFence = fence;
+      return;
     }
     this.map.set(key, value);
   }
@@ -30,10 +33,10 @@ export class FencedStore {
 
   delete(key: string, fence?: number): boolean {
     if (this.lease !== null) {
-      if (fence === undefined) {
-        throw new Error("fenced delete not implemented");
-      }
-      throw new Error("fenced delete not implemented");
+      requireValidFence(this.lease, fence);
+      const removed = this.map.delete(key);
+      this.writerFence = fence;
+      return removed;
     }
     return this.map.delete(key);
   }
@@ -71,6 +74,6 @@ export class FencedStore {
   }
 
   lastWriterFence(): number | undefined {
-    return undefined;
+    return this.writerFence;
   }
 }
