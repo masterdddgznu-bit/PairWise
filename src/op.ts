@@ -14,4 +14,15 @@ export class Op {
     this.id = id;
     this.kind = kind;
   }
+
+  static write(id: string, writerId: number, value: string): Op {
+    const op = new Op(id, "write");
+    op.writerId = writerId;
+    op.value = value;
+    return op;
+  }
+
+  static read(id: string): Op {
+    return new Op(id, "read");
+  }
 }
