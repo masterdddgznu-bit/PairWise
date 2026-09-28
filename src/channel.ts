@@ -8,8 +8,14 @@ export class Channel {
     this.from = from;
     this.to = to;
   }
-  enqueue(_m: Msg): void { /* stub */ }
-  dequeue(): Msg | undefined { return undefined; }
-  peek(): Msg | undefined { return undefined; }
+  enqueue(m: Msg): void {
+    this.q.push(m);
+  }
+  dequeue(): Msg | undefined {
+    return this.q.shift();
+  }
+  peek(): Msg | undefined {
+    return this.q[0];
+  }
   size(): number { return this.q.length; }
 }
