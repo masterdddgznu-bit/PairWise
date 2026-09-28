@@ -1,15 +1,35 @@
-import type { Delta, Entry, VersionVector } from "./types.js";
+import { DeltaMapError } from "./errors.js";
+import type { Delta, Dot, Entry, VersionVector } from "./types.js";
+import { EntryStore } from "./entries.js";
+import { applyDelta as applyDeltaEntries, extractDelta } from "./delta.js";
+import { AckTable, sweepTombstones } from "./gc.js";
+import { vvGet } from "./vv.js";
 
 /**
  * Delta-state LWW-Map.
- * Base no-arg Map put/get/delete works.
+ * No-arg construction is a plain local Map (base tests); a `replicaId`
+ * enables dots, tombstones, merge, deltas, ACK and GC.
  */
 export class DeltaMap {
   private readonly map = new Map<string, string>();
+  private readonly store = new EntryStore();
+  private readonly acks = new AckTable();
+  private localCounter = 0;
   readonly replicaId: string | null;
 
   constructor(replicaId?: string) {
     this.replicaId = replicaId ?? null;
+  }
+
+  private feature(): EntryStore {
+    if (this.replicaId === null) {
+      throw new DeltaMapError("operation requires a replicaId");
+    }
+    return this.store;
+  }
+
+  private nextDot(): Dot {
+    return { replicaId: this.replicaId as string, counter: ++this.localCounter };
   }
 
   put(key: string, value: string): void {
@@ -17,67 +37,79 @@ export class DeltaMap {
       this.map.set(key, value);
       return;
     }
-    throw new Error("replica put not implemented");
+    this.store.put(key, value, this.nextDot());
   }
 
   get(key: string): string | undefined {
     if (this.replicaId === null) return this.map.get(key);
-    throw new Error("replica get not implemented");
+    return this.store.getValue(key);
   }
 
   delete(key: string): boolean {
     if (this.replicaId === null) return this.map.delete(key);
-    throw new Error("replica delete not implemented");
+    return this.store.tombstone(key, this.nextDot());
   }
 
   has(key: string): boolean {
     if (this.replicaId === null) return this.map.has(key);
-    throw new Error("replica has not implemented");
+    return this.store.has(key);
   }
 
   keys(): string[] {
     if (this.replicaId === null) return [...this.map.keys()].sort();
-    throw new Error("replica keys not implemented");
+    return this.store.keys();
   }
 
   size(): number {
     if (this.replicaId === null) return this.map.size;
-    throw new Error("replica size not implemented");
+    return this.store.size();
   }
 
-  merge(_other: DeltaMap): void {
-    throw new Error("merge not implemented");
+  /** LWW-merge every entry (including tombstones) from another replica. */
+  merge(other: DeltaMap): void {
+    this.feature();
+    for (const e of other.store.all()) this.store.applyLww(e);
   }
 
   versionVector(): VersionVector {
-    throw new Error("versionVector not implemented");
+    this.feature();
+    const vv: VersionVector = {};
+    for (const e of this.store.all()) {
+      if (e.dot.counter > vvGet(vv, e.dot.replicaId)) {
+        vv[e.dot.replicaId] = e.dot.counter;
+      }
+    }
+    return vv;
   }
 
-  deltaSince(_vv: VersionVector): Delta {
-    throw new Error("deltaSince not implemented");
+  deltaSince(vv: VersionVector): Delta {
+    return extractDelta(this.feature().all(), vv);
   }
 
-  applyDelta(_delta: Delta): void {
-    throw new Error("applyDelta not implemented");
+  applyDelta(delta: Delta): void {
+    applyDeltaEntries(this.feature(), delta);
   }
 
-  ack(_peer: string, _vv: VersionVector): void {
-    throw new Error("ack not implemented");
+  ack(peer: string, vv: VersionVector): void {
+    this.feature();
+    this.acks.ack(peer, vv);
   }
 
   minAckVV(): VersionVector {
-    throw new Error("minAckVV not implemented");
+    this.feature();
+    return this.acks.minAck();
   }
 
   gc(): number {
-    throw new Error("gc not implemented");
+    return sweepTombstones(this.feature(), this.acks.minAck());
   }
 
-  getEntry(_key: string): Entry | undefined {
-    throw new Error("getEntry not implemented");
+  getEntry(key: string): Entry | undefined {
+    return this.feature().getEntry(key);
   }
 
   peersAcked(): string[] {
-    throw new Error("peersAcked not implemented");
+    this.feature();
+    return this.acks.peers();
   }
 }
