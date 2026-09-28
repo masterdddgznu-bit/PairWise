@@ -1,3 +1,4 @@
+import { cmpTs } from "./timestamp.js";
 import type { ReplicaStore, Timestamp } from "./types.js";
 
 export class Replica {
@@ -14,7 +15,10 @@ export class Replica {
     return { value: this.value, ts: { ...this.ts } };
   }
 
-  apply(_value: string | null, _ts: Timestamp): void {
-    /* stub */
+  apply(value: string | null, ts: Timestamp): void {
+    if (cmpTs(ts, this.ts) > 0) {
+      this.value = value;
+      this.ts = { ...ts };
+    }
   }
 }
