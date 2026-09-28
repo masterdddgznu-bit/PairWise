@@ -11,5 +11,7 @@ export function cmpRequest(
   bTs: number,
   bId: number,
 ): number {
+  if (aTs !== bTs) return aTs < bTs ? -1 : 1;
+  if (aId !== bId) return aId < bId ? -1 : 1;
   return 0;
 }
