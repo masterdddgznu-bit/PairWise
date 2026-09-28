@@ -1,27 +1,69 @@
 import type { VirtualClock } from "./clock.js";
+import { LeaseHeldError, StaleFenceError } from "./errors.js";
 import type { LeaseInfo } from "./types.js";
 
-/** Lease state machine — starter stub. */
+/** Lease state machine driven by a VirtualClock. */
 export class LeaseManager {
-  constructor(_clock: VirtualClock) {}
+  private currentLease: LeaseInfo | null = null;
+  private globalFence = 0;
 
-  acquire(_holderId: string, _ttlMs: number): { fence: number } {
-    throw new Error("acquire not implemented");
+  constructor(private readonly clock: VirtualClock) {}
+
+  acquire(holderId: string, ttlMs: number): { fence: number } {
+    const active = this.current();
+    if (active === null) {
+      return this.grant(holderId, ttlMs);
+    }
+    if (active.holderId === holderId) {
+      active.expiresAt = this.clock.now() + ttlMs;
+      return { fence: active.fence };
+    }
+    throw new LeaseHeldError();
   }
 
-  renew(_holderId: string, _fence: number, _ttlMs: number): void {
-    throw new Error("renew not implemented");
+  renew(holderId: string, fence: number, ttlMs: number): void {
+    const active = this.current();
+    if (active === null) {
+      throw new StaleFenceError();
+    }
+    if (active.holderId !== holderId) {
+      throw new LeaseHeldError();
+    }
+    if (active.fence !== fence) {
+      throw new StaleFenceError();
+    }
+    active.expiresAt = this.clock.now() + ttlMs;
   }
 
-  release(_holderId: string, _fence: number): void {
-    throw new Error("release not implemented");
+  release(holderId: string, fence: number): void {
+    const active = this.current();
+    if (active === null || active.holderId !== holderId || active.fence !== fence) {
+      throw new StaleFenceError();
+    }
+    this.currentLease = null;
   }
 
   current(): LeaseInfo | null {
-    return null;
+    if (this.currentLease !== null && this.clock.now() >= this.currentLease.expiresAt) {
+      this.currentLease = null;
+    }
+    return this.currentLease;
   }
 
   assertFence(_fence: number): void {
-    throw new Error("assertFence not implemented");
+    const active = this.current();
+    if (active === null || active.fence !== _fence) {
+      throw new StaleFenceError();
+    }
+  }
+
+  private grant(holderId: string, ttlMs: number): { fence: number } {
+    const fence = ++this.globalFence;
+    this.currentLease = {
+      holderId,
+      fence,
+      expiresAt: this.clock.now() + ttlMs,
+    };
+    return { fence };
   }
 }
