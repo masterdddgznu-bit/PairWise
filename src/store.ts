@@ -1,18 +1,31 @@
 import { VirtualClock } from "./clock.js";
+import { diffRoots } from "./diff.js";
+import { SnapNotFoundError } from "./errors.js";
+import { releaseRoot, replaceHead, retainRoot } from "./gc.js";
 import { MapRoot } from "./root.js";
+import { VersionPool } from "./version.js";
 import type { DiffResult, SnapOpts, Stats } from "./types.js";
+
+type Snapshot = {
+  id: string;
+  root: MapRoot;
+  expireAt?: number;
+};
 
 /**
  * Copy-on-write snapshot store.
- * Base HEAD put/get/delete/has/keys/size work.
  */
 export class SnapStore {
   readonly clock: VirtualClock;
   /** @internal */ readonly head: MapRoot;
+  /** @internal */ readonly pool: VersionPool;
+  private readonly snapshots = new Map<string, Snapshot>();
+  private nextSnapSeq = 1;
 
   constructor(clock?: VirtualClock) {
     this.clock = clock ?? new VirtualClock();
-    this.head = new MapRoot();
+    this.pool = new VersionPool();
+    this.head = new MapRoot(this.pool);
   }
 
   put(key: string, value: string): void {
@@ -40,46 +53,78 @@ export class SnapStore {
   }
 
   snapshot(_opts?: SnapOpts): string {
-    throw new Error("snapshot not implemented");
+    const root = this.head.clone();
+    retainRoot(root);
+    const id = `s${this.nextSnapSeq++}`;
+    const snap: Snapshot = {
+      id,
+      root,
+      expireAt:
+        _opts?.ttlMs === undefined ? undefined : this.clock.now() + _opts.ttlMs,
+    };
+    this.snapshots.set(id, snap);
+    return id;
   }
 
-  getAt(_snapId: string, _key: string): string | undefined {
-    throw new Error("getAt not implemented");
+  getAt(snapId: string, key: string): string | undefined {
+    return this.requireSnapshot(snapId).root.get(key);
   }
 
-  hasAt(_snapId: string, _key: string): boolean {
-    throw new Error("hasAt not implemented");
+  hasAt(snapId: string, key: string): boolean {
+    return this.requireSnapshot(snapId).root.has(key);
   }
 
-  keysAt(_snapId: string): string[] {
-    throw new Error("keysAt not implemented");
+  keysAt(snapId: string): string[] {
+    return this.requireSnapshot(snapId).root.keys();
   }
 
-  sizeAt(_snapId: string): number {
-    throw new Error("sizeAt not implemented");
+  sizeAt(snapId: string): number {
+    return this.requireSnapshot(snapId).root.size();
   }
 
-  fork(_snapId: string): void {
-    throw new Error("fork not implemented");
+  fork(snapId: string): void {
+    const snap = this.requireSnapshot(snapId);
+    replaceHead(this.head, snap.root);
   }
 
-  diff(_a: string, _b: string): DiffResult {
-    throw new Error("diff not implemented");
+  diff(a: string, b: string): DiffResult {
+    const rootA = this.requireSnapshot(a).root;
+    const rootB = this.requireSnapshot(b).root;
+    return diffRoots(rootA, rootB);
   }
 
-  drop(_snapId: string): boolean {
-    throw new Error("drop not implemented");
+  drop(snapId: string): boolean {
+    const snap = this.snapshots.get(snapId);
+    if (!snap) return false;
+    this.snapshots.delete(snapId);
+    releaseRoot(snap.root);
+    return true;
   }
 
   listSnapshots(): string[] {
-    throw new Error("listSnapshots not implemented");
+    return [...this.snapshots.keys()].sort();
   }
 
   tick(): void {
-    throw new Error("tick not implemented");
+    const now = this.clock.now();
+    for (const [id, snap] of this.snapshots) {
+      if (snap.expireAt !== undefined && snap.expireAt <= now) {
+        this.snapshots.delete(id);
+        releaseRoot(snap.root);
+      }
+    }
   }
 
   stats(): Stats {
-    throw new Error("stats not implemented");
+    return {
+      snapshots: this.snapshots.size,
+      versions: this.pool.liveCount(),
+    };
+  }
+
+  private requireSnapshot(snapId: string): Snapshot {
+    const snap = this.snapshots.get(snapId);
+    if (!snap) throw new SnapNotFoundError(`Snapshot not found: ${snapId}`);
+    return snap;
   }
 }
