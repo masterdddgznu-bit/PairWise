@@ -1,15 +1,30 @@
 import type { Agg } from "./types.js";
 
 export class ProcessingTriggers {
-  arm(_windowStart: number, _fireAt: number): void {
-    throw new Error("triggers not implemented");
+  private readonly armed = new Map<number, number>();
+  private readonly fired = new Map<number, Agg[]>();
+
+  arm(windowStart: number, fireAt: number): void {
+    this.armed.set(windowStart, fireAt);
   }
 
-  tick(_now: number, _snap: (start: number) => Agg[] | null): void {
-    throw new Error("triggers tick not implemented");
+  tick(now: number, snapshot: (start: number) => Agg[] | null): void {
+    for (const [windowStart, fireAt] of this.armed) {
+      if (now < fireAt) continue;
+      this.armed.delete(windowStart);
+      const snap = snapshot(windowStart);
+      if (snap) {
+        this.fired.set(
+          windowStart,
+          snap.map((a) => ({ ...a })),
+        );
+      }
+    }
   }
 
-  get(_windowStart: number): Agg[] | null {
-    return null;
+  get(windowStart: number): Agg[] | null {
+    const snap = this.fired.get(windowStart);
+    if (!snap) return null;
+    return snap.map((a) => ({ ...a }));
   }
 }

@@ -1,4 +1,10 @@
 import { VirtualClock } from "./clock.js";
+import { IdRegistry } from "./idempotency.js";
+import { WatermarkTrack } from "./watermark.js";
+import { TumblingWindows } from "./tumbling.js";
+import { SessionWindows } from "./session.js";
+import { SideOutput } from "./side.js";
+import { ProcessingTriggers } from "./triggers.js";
 import type {
   Agg,
   EmitResult,
@@ -15,6 +21,12 @@ export class LateWin {
   readonly clock: VirtualClock;
   private readonly map = new Map<string, number>();
   private readonly allowedLateness: number;
+  private readonly ids = new IdRegistry();
+  private readonly watermarkTrack = new WatermarkTrack();
+  private readonly tumblingWindows = new TumblingWindows();
+  private readonly sessionWindows = new SessionWindows();
+  private readonly sideOutput_ = new SideOutput();
+  private readonly triggers = new ProcessingTriggers();
 
   constructor(clock?: VirtualClock, opts?: LateWinOpts) {
     this.clock = clock ?? new VirtualClock();
@@ -45,52 +57,82 @@ export class LateWin {
     return this.map.size;
   }
 
-  emit(_ev: StreamEvent): EmitResult {
-    throw new Error("emit not implemented");
+  emit(ev: StreamEvent): EmitResult {
+    if (!this.ids.check(ev.id)) return "duplicate";
+
+    const tumblingEnabled = this.tumblingWindows.enabled();
+    let tumblingLate = false;
+    if (tumblingEnabled) {
+      const outcome = this.tumblingWindows.onEvent(ev);
+      if (outcome === "late") tumblingLate = true;
+    }
+
+    if (tumblingLate) {
+      this.sideOutput_.push(ev);
+      return "late";
+    }
+
+    if (this.sessionWindows.enabled()) {
+      const outcome = this.sessionWindows.onEvent(
+        ev,
+        !tumblingEnabled,
+      );
+      if (outcome === "late") {
+        this.sideOutput_.push(ev);
+        return "late";
+      }
+    }
+
+    return "ok";
   }
 
-  advanceWatermark(_t: number): void {
-    throw new Error("advanceWatermark not implemented");
+  advanceWatermark(t: number): void {
+    this.watermarkTrack.advance(t);
+    const wm = this.watermarkTrack.value();
+    this.tumblingWindows.onWatermark(wm, this.allowedLateness);
+    this.sessionWindows.onWatermark(wm, this.allowedLateness);
   }
 
   watermark(): number {
-    throw new Error("watermark not implemented");
+    return this.watermarkTrack.value();
   }
 
-  enableTumbling(_size: number): void {
-    throw new Error("enableTumbling not implemented");
+  enableTumbling(size: number): void {
+    this.tumblingWindows.enable(size);
   }
 
-  tumblingResult(_start: number): Agg[] {
-    throw new Error("tumblingResult not implemented");
+  tumblingResult(start: number): Agg[] {
+    return this.tumblingWindows.result(start);
   }
 
   closedTumbling(): number[] {
-    throw new Error("closedTumbling not implemented");
+    return this.tumblingWindows.closed();
   }
 
   sideOutput(): StreamEvent[] {
-    throw new Error("sideOutput not implemented");
+    return this.sideOutput_.list();
   }
 
-  enableSession(_gap: number): void {
-    throw new Error("enableSession not implemented");
+  enableSession(gap: number): void {
+    this.sessionWindows.enable(gap);
   }
 
   sessionResults(): SessionAgg[] {
-    throw new Error("sessionResults not implemented");
+    return this.sessionWindows.results();
   }
 
-  armProcessingTrigger(_windowStart: number, _fireAt: number): void {
-    throw new Error("armProcessingTrigger not implemented");
+  armProcessingTrigger(windowStart: number, fireAt: number): void {
+    this.triggers.arm(windowStart, fireAt);
   }
 
   tick(): void {
-    throw new Error("tick not implemented");
+    this.triggers.tick(this.clock.now(), (start) =>
+      this.tumblingWindows.snapshot(start),
+    );
   }
 
-  triggeredResults(_windowStart: number): Agg[] | null {
-    throw new Error("triggeredResults not implemented");
+  triggeredResults(windowStart: number): Agg[] | null {
+    return this.triggers.get(windowStart);
   }
 
   /** expose for silence unused in starter */

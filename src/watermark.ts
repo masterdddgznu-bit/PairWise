@@ -6,6 +6,6 @@ export class WatermarkTrack {
   }
 
   advance(t: number): void {
-    if (t > this.wm) this.wm = t;
+    if (t >= this.wm) this.wm = t;
   }
 }
