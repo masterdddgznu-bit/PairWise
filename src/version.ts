@@ -5,21 +5,46 @@ export type VersionNode = {
   refs: number;
 };
 
-/** Starter stub. */
+/**
+ * Pool of version nodes with reference counting.
+ * A node is "live" while refs > 0; when refs drop to 0 it is
+ * removed from the live set (collected).
+ */
 export class VersionPool {
-  alloc(_key: string, _value: string): VersionNode {
-    throw new Error("version alloc not implemented");
+  private nextId = 1;
+  private readonly live = new Set<VersionNode>();
+
+  /** Allocate a node; the caller owns the first reference. */
+  alloc(key: string, value: string): VersionNode {
+    const node: VersionNode = { id: this.nextId++, key, value, refs: 1 };
+    this.live.add(node);
+    return node;
   }
 
-  retain(_node: VersionNode): void {
-    throw new Error("retain not implemented");
+  retain(node: VersionNode): void {
+    node.refs += 1;
   }
 
-  release(_node: VersionNode): void {
-    throw new Error("release not implemented");
+  release(node: VersionNode): void {
+    node.refs -= 1;
+    if (node.refs <= 0) {
+      this.live.delete(node);
+    }
   }
 
   liveCount(): number {
-    return 0;
+    return this.live.size;
+  }
+
+  /** @internal Sweep any dead nodes still tracked; returns collected count. */
+  sweep(): number {
+    let collected = 0;
+    for (const node of [...this.live]) {
+      if (node.refs <= 0) {
+        this.live.delete(node);
+        collected += 1;
+      }
+    }
+    return collected;
   }
 }
