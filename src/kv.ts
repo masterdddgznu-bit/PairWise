@@ -1,5 +1,8 @@
 import { VirtualClock } from "./clock.js";
+import { makeProof, verifyProof } from "./proof.js";
 import { EntryStore } from "./store.js";
+import { diffEntries } from "./sync.js";
+import { computeRoot } from "./tree.js";
 import type { DeleteOpts, DiffOp, MerkleProof } from "./types.js";
 
 /**
@@ -12,7 +15,7 @@ export class MerkleKV {
 
   constructor(clock?: VirtualClock) {
     this.clock = clock ?? new VirtualClock();
-    this.store = new EntryStore();
+    this.store = new EntryStore(this.clock);
   }
 
   put(key: string, value: string): void {
@@ -24,9 +27,6 @@ export class MerkleKV {
   }
 
   delete(key: string, opts?: DeleteOpts): boolean {
-    if (opts?.ttlMs !== undefined) {
-      throw new Error("tombstone ttl not implemented");
-    }
     return this.store.delete(key, opts);
   }
 
@@ -43,26 +43,26 @@ export class MerkleKV {
   }
 
   rootHash(): string {
-    throw new Error("rootHash not implemented");
+    return computeRoot(this.store.liveEntries());
   }
 
-  getProof(_key: string): MerkleProof | null {
-    throw new Error("getProof not implemented");
+  getProof(key: string): MerkleProof | null {
+    return makeProof(key, this.store.liveEntries());
   }
 
-  verifyProof(_proof: MerkleProof): boolean {
-    throw new Error("verifyProof not implemented");
+  verifyProof(proof: MerkleProof): boolean {
+    return verifyProof(proof);
   }
 
-  diffAgainst(_other: MerkleKV): DiffOp[] {
-    throw new Error("diffAgainst not implemented");
+  diffAgainst(other: MerkleKV): DiffOp[] {
+    return diffEntries(this.store.allEntries(), other.store.allEntries());
   }
 
-  applyDiff(_ops: DiffOp[]): void {
-    throw new Error("applyDiff not implemented");
+  applyDiff(ops: DiffOp[]): void {
+    this.store.applyOps(ops);
   }
 
   tick(): void {
-    throw new Error("tick not implemented");
+    this.store.tick();
   }
 }
