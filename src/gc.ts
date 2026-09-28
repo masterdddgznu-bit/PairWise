@@ -1,13 +1,27 @@
+import { vmax, zeros } from "./vclock.js";
+
 export class StableGc {
-  ack(_to: number, _clock: number[]): void {
-    throw new Error("gc ack not implemented");
+  private readonly acks: number[][];
+
+  constructor(n: number) {
+    this.acks = Array.from({ length: n }, () => zeros(n));
   }
 
-  minStable(_n: number): number[] {
-    throw new Error("minStable not implemented");
+  ack(to: number, clock: number[]): void {
+    this.acks[to] = vmax(this.acks[to], clock);
+  }
+
+  minStable(n: number): number[] {
+    const out = this.acks[0].slice();
+    for (let i = 1; i < this.acks.length; i++) {
+      for (let d = 0; d < n; d++) {
+        out[d] = Math.min(out[d], this.acks[i][d]);
+      }
+    }
+    return out;
   }
 
   collect(_n: number): void {
-    throw new Error("gc collect not implemented");
+    // Collection is orchestrated by VecBuf via CausalBuffer.gc(minStable, to).
   }
 }
