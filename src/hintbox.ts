@@ -8,17 +8,26 @@ export function sortHints(hints: Hint[]): Hint[] {
   });
 }
 
-/** Hint mailbox — starter stub. */
+/** Hint mailbox for a single holder node. */
 export class HintBox {
-  store(_hint: Hint): void {
-    throw new Error("storeHint not implemented");
+  private hints: Hint[] = [];
+
+  store(hint: Hint): void {
+    this.hints.push(hint);
   }
 
   forHolder(): Hint[] {
-    return [];
+    return sortHints(this.hints);
   }
 
-  takeForTarget(_target: string): Hint[] {
-    throw new Error("takeForTarget not implemented");
+  takeForTarget(target: string): Hint[] {
+    const taken: Hint[] = [];
+    const kept: Hint[] = [];
+    for (const hint of this.hints) {
+      if (hint.target === target) taken.push(hint);
+      else kept.push(hint);
+    }
+    this.hints = kept;
+    return sortHints(taken);
   }
 }

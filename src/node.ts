@@ -1,28 +1,37 @@
-import type { Dot, Hint } from "./types.js";
+import { HintBox } from "./hintbox.js";
+import { compareDots, type Dot, type Hint } from "./types.js";
 
-/** Single replica: primary map + hint mailbox (starter stub). */
+/** Single replica: primary map + hint mailbox. */
 export class Node {
-  putPrimary(_key: string, _value: string, _version: Dot): void {
-    throw new Error("putPrimary not implemented");
+  private readonly primary = new Map<string, { value: string; version: Dot }>();
+  private readonly mailbox = new HintBox();
+
+  constructor(readonly id: string) {}
+
+  putPrimary(key: string, value: string, version: Dot): void {
+    const existing = this.primary.get(key);
+    if (!existing || compareDots(version, existing.version) > 0) {
+      this.primary.set(key, { value, version });
+    }
   }
 
-  getPrimary(_key: string): string | undefined {
-    throw new Error("getPrimary not implemented");
+  getPrimary(key: string): string | undefined {
+    return this.primary.get(key)?.value;
   }
 
-  getPrimaryEntry(_key: string): { value: string; version: Dot } | undefined {
-    throw new Error("getPrimaryEntry not implemented");
+  getPrimaryEntry(key: string): { value: string; version: Dot } | undefined {
+    return this.primary.get(key);
   }
 
-  storeHint(_hint: Hint): void {
-    throw new Error("storeHint not implemented");
+  storeHint(hint: Hint): void {
+    this.mailbox.store(hint);
   }
 
   hintsFor(): Hint[] {
-    return [];
+    return this.mailbox.forHolder();
   }
 
-  takeHintsForTarget(_target: string): Hint[] {
-    throw new Error("takeHintsForTarget not implemented");
+  takeHintsForTarget(target: string): Hint[] {
+    return this.mailbox.takeForTarget(target);
   }
 }
