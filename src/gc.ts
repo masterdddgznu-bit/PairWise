@@ -1,15 +1,18 @@
 import type { VersionVector } from "./types.js";
+import { vvMin } from "./vv.js";
 
 export class AckTable {
-  ack(_peer: string, _vv: VersionVector): void {
-    throw new Error("ack not implemented");
+  private readonly acks = new Map<string, VersionVector>();
+
+  ack(peer: string, vv: VersionVector): void {
+    this.acks.set(peer, { ...vv });
   }
 
   minAck(): VersionVector {
-    throw new Error("minAck not implemented");
+    return vvMin([...this.acks.values()]);
   }
 
   peers(): string[] {
-    return [];
+    return [...this.acks.keys()].sort();
   }
 }
