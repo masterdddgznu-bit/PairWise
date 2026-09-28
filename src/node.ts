@@ -13,4 +13,8 @@ export class RNode {
   constructor(id: number) {
     this.id = id;
   }
+
+  sortedDeferred(): number[] {
+    return [...this.deferred].sort((a, b) => a - b);
+  }
 }
