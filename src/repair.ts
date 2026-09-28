@@ -2,25 +2,46 @@ import type { RepairRequest } from "./types.js";
 import type { VirtualClock } from "./clock.js";
 
 export class RepairTimer {
-  constructor(
-    _n: number,
-    _clock: VirtualClock,
-    _timeoutMs: number,
-  ) {}
+  private readonly n: number;
+  private readonly clock: VirtualClock;
+  private readonly timeoutMs: number;
+  private readonly anchor: (number | null)[];
+  private readonly pending: RepairRequest[] = [];
 
-  noteBufferNonEmpty(_to: number): void {
-    throw new Error("repair timer not implemented");
+  constructor(n: number, clock: VirtualClock, timeoutMs: number) {
+    this.n = n;
+    this.clock = clock;
+    this.timeoutMs = timeoutMs;
+    this.anchor = Array.from({ length: n }, () => null);
   }
 
-  noteBufferEmpty(_to: number): void {
-    throw new Error("repair timer not implemented");
+  noteBufferNonEmpty(to: number): void {
+    this.anchor[to] = this.clock.now();
   }
 
-  tick(_missingOf: (to: number) => { from: number; seq: number }[]): RepairRequest[] {
-    throw new Error("repair tick not implemented");
+  noteBufferEmpty(to: number): void {
+    this.anchor[to] = null;
+  }
+
+  tick(missingOf: (to: number) => { from: number; seq: number }[]): RepairRequest[] {
+    const now = this.clock.now();
+    const fresh: RepairRequest[] = [];
+    for (let to = 0; to < this.n; to++) {
+      const since = this.anchor[to];
+      if (since === null) continue;
+      if (now - since < this.timeoutMs) continue;
+      const missing = missingOf(to);
+      if (missing.length === 0) continue;
+      const req: RepairRequest = { to, missing };
+      this.pending.push(req);
+      fresh.push(req);
+      this.anchor[to] = now;
+    }
+    return fresh;
   }
 
   drain(): RepairRequest[] {
-    return [];
+    if (this.pending.length === 0) return [];
+    return this.pending.splice(0, this.pending.length);
   }
 }

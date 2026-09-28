@@ -1,5 +1,8 @@
 import { VirtualClock } from "./clock.js";
 import { Mailbox } from "./mailbox.js";
+import { CausalBuffer } from "./buffer.js";
+import { RepairTimer } from "./repair.js";
+import { StableGc } from "./gc.js";
 import type {
   CausalMessage,
   Mail,
@@ -16,6 +19,9 @@ export class VecBuf {
   readonly clock: VirtualClock;
   private readonly mail: Mailbox;
   private readonly repairTimeoutMs: number;
+  private readonly causal: CausalBuffer;
+  private readonly repair: RepairTimer;
+  private readonly stable: StableGc;
 
   constructor(n: number, clock?: VirtualClock, opts?: VecBufOpts) {
     if (n <= 0) throw new Error("n must be positive");
@@ -23,6 +29,9 @@ export class VecBuf {
     this.clock = clock ?? new VirtualClock();
     this.mail = new Mailbox(n);
     this.repairTimeoutMs = opts?.repairTimeoutMs ?? 10;
+    this.causal = new CausalBuffer(n);
+    this.repair = new RepairTimer(n, this.clock, this.repairTimeoutMs);
+    this.stable = new StableGc(n);
   }
 
   send(from: number, to: number, payload: string): void {
@@ -37,52 +46,73 @@ export class VecBuf {
     return this.mail.size(to);
   }
 
-  broadcast(_from: number, _payload: string): CausalMessage {
-    throw new Error("broadcast not implemented");
+  broadcast(from: number, payload: string): CausalMessage {
+    return this.causal.bumpSend(from, payload);
   }
 
-  receive(_to: number, _msg: CausalMessage): void {
-    throw new Error("receive not implemented");
+  receive(to: number, msg: CausalMessage): void {
+    if (this.causal.receive(to, msg)) {
+      this.repair.noteBufferNonEmpty(to);
+    }
   }
 
-  deliver(_to: number): CausalMessage | null {
-    throw new Error("deliver not implemented");
+  deliver(to: number): CausalMessage | null {
+    const msg = this.causal.deliver(to);
+    if (msg === null) return null;
+    if (this.causal.isEmpty(to)) {
+      this.repair.noteBufferEmpty(to);
+    } else {
+      this.repair.noteBufferNonEmpty(to);
+    }
+    return msg;
   }
 
-  deliverAll(_to: number): CausalMessage[] {
-    throw new Error("deliverAll not implemented");
+  deliverAll(to: number): CausalMessage[] {
+    const out: CausalMessage[] = [];
+    for (;;) {
+      const msg = this.deliver(to);
+      if (msg === null) break;
+      out.push(msg);
+    }
+    return out;
   }
 
-  buffered(_to: number): number {
-    throw new Error("buffered not implemented");
+  buffered(to: number): number {
+    return this.causal.buffered(to);
   }
 
-  deliveredClock(_to: number): number[] {
-    throw new Error("deliveredClock not implemented");
+  deliveredClock(to: number): number[] {
+    return this.causal.deliveredClock(to);
   }
 
-  missing(_to: number): Missing[] {
-    throw new Error("missing not implemented");
+  missing(to: number): Missing[] {
+    return this.causal.missing(to);
   }
 
   tick(): void {
-    throw new Error("tick not implemented");
+    this.repair.tick((to) => this.causal.missing(to));
   }
 
   pendingRepairs(): RepairRequest[] {
-    throw new Error("pendingRepairs not implemented");
+    return this.repair.drain();
   }
 
-  ack(_to: number, _clock: number[]): void {
-    throw new Error("ack not implemented");
+  ack(to: number, clock: number[]): void {
+    this.stable.ack(to, clock);
   }
 
   minStableClock(): number[] {
-    throw new Error("minStableClock not implemented");
+    return this.stable.minStable();
   }
 
   gc(): void {
-    throw new Error("gc not implemented");
+    const stable = this.stable.minStable();
+    this.causal.gc(stable);
+    for (let to = 0; to < this.n; to++) {
+      if (this.causal.isEmpty(to)) {
+        this.repair.noteBufferEmpty(to);
+      }
+    }
   }
 
   protected timeout(): number {
