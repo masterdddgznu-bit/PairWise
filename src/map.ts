@@ -1,83 +1,140 @@
 import type { Delta, Entry, VersionVector } from "./types.js";
+import { AckTable } from "./gc.js";
+import { EntryStore } from "./entries.js";
+import { extractDelta } from "./delta.js";
+import { vvBump, vvGet } from "./vv.js";
 
 /**
  * Delta-state LWW-Map.
- * Base no-arg Map put/get/delete works.
+ * No-arg construction stays a plain Map for base tests;
+ * passing a replicaId enables dots, merge, deltas and GC.
  */
 export class DeltaMap {
   private readonly map = new Map<string, string>();
   readonly replicaId: string | null;
+  private readonly store?: EntryStore;
+  private readonly acks?: AckTable;
+  private localCounter = 0;
+  private knowledge: VersionVector = {};
 
   constructor(replicaId?: string) {
     this.replicaId = replicaId ?? null;
+    if (this.replicaId !== null) {
+      this.store = new EntryStore();
+      this.acks = new AckTable();
+    }
   }
 
   put(key: string, value: string): void {
-    if (this.replicaId === null) {
+    if (this.replicaId === null || this.store === undefined) {
       this.map.set(key, value);
       return;
     }
-    throw new Error("replica put not implemented");
+    const counter = ++this.localCounter;
+    const dot = { replicaId: this.replicaId, counter };
+    this.store.put(key, value, dot);
+    this.knowledge = vvBump(this.knowledge, this.replicaId, counter);
   }
 
   get(key: string): string | undefined {
-    if (this.replicaId === null) return this.map.get(key);
-    throw new Error("replica get not implemented");
+    if (this.replicaId === null || this.store === undefined) {
+      return this.map.get(key);
+    }
+    return this.store.getValue(key);
   }
 
   delete(key: string): boolean {
-    if (this.replicaId === null) return this.map.delete(key);
-    throw new Error("replica delete not implemented");
+    if (this.replicaId === null || this.store === undefined) {
+      return this.map.delete(key);
+    }
+    const existing = this.store.getEntry(key);
+    if (existing === undefined || existing.value === null) return false;
+    const counter = ++this.localCounter;
+    const ok = this.store.tombstone(key, { replicaId: this.replicaId, counter });
+    if (ok) {
+      this.knowledge = vvBump(this.knowledge, this.replicaId, counter);
+    }
+    return ok;
   }
 
   has(key: string): boolean {
-    if (this.replicaId === null) return this.map.has(key);
-    throw new Error("replica has not implemented");
+    return this.get(key) !== undefined;
   }
 
   keys(): string[] {
-    if (this.replicaId === null) return [...this.map.keys()].sort();
-    throw new Error("replica keys not implemented");
+    if (this.replicaId === null || this.store === undefined) {
+      return [...this.map.keys()].sort();
+    }
+    return this.store.keys();
   }
 
   size(): number {
-    if (this.replicaId === null) return this.map.size;
-    throw new Error("replica size not implemented");
+    if (this.replicaId === null || this.store === undefined) {
+      return this.map.size;
+    }
+    return this.store.size();
   }
 
-  merge(_other: DeltaMap): void {
-    throw new Error("merge not implemented");
+  merge(other: DeltaMap): void {
+    if (this.store === undefined || other.store === undefined) {
+      throw new Error("merge requires replica-enabled DeltaMaps");
+    }
+    for (const entry of other.store.all()) {
+      this.store.applyLww(entry);
+      this.knowledge = vvBump(this.knowledge, entry.dot.replicaId, entry.dot.counter);
+    }
   }
 
   versionVector(): VersionVector {
-    throw new Error("versionVector not implemented");
+    return { ...this.knowledge };
   }
 
-  deltaSince(_vv: VersionVector): Delta {
-    throw new Error("deltaSince not implemented");
+  deltaSince(vv: VersionVector): Delta {
+    if (this.store === undefined) {
+      throw new Error("deltaSince requires a replica-enabled DeltaMap");
+    }
+    return extractDelta(this.store.all(), vv);
   }
 
-  applyDelta(_delta: Delta): void {
-    throw new Error("applyDelta not implemented");
+  applyDelta(delta: Delta): void {
+    if (this.store === undefined) {
+      throw new Error("applyDelta requires a replica-enabled DeltaMap");
+    }
+    for (const entry of delta.entries) {
+      this.store.applyLww(entry);
+      this.knowledge = vvBump(this.knowledge, entry.dot.replicaId, entry.dot.counter);
+    }
   }
 
-  ack(_peer: string, _vv: VersionVector): void {
-    throw new Error("ack not implemented");
+  ack(peer: string, vv: VersionVector): void {
+    if (this.acks === undefined) {
+      throw new Error("ack requires a replica-enabled DeltaMap");
+    }
+    this.acks.ack(peer, vv);
   }
 
   minAckVV(): VersionVector {
-    throw new Error("minAckVV not implemented");
+    if (this.acks === undefined) {
+      throw new Error("minAckVV requires a replica-enabled DeltaMap");
+    }
+    return this.acks.minAck();
   }
 
   gc(): number {
-    throw new Error("gc not implemented");
+    if (this.store === undefined || this.acks === undefined) {
+      throw new Error("gc requires a replica-enabled DeltaMap");
+    }
+    const minAck = this.acks.minAck();
+    return this.store.removeTombstones(
+      (entry) => entry.dot.counter <= vvGet(minAck, entry.dot.replicaId),
+    );
   }
 
-  getEntry(_key: string): Entry | undefined {
-    throw new Error("getEntry not implemented");
+  getEntry(key: string): Entry | undefined {
+    return this.store?.getEntry(key);
   }
 
   peersAcked(): string[] {
-    throw new Error("peersAcked not implemented");
+    return this.acks?.peers() ?? [];
   }
 }

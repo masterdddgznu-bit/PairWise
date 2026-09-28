@@ -1,15 +1,23 @@
 import type { VersionVector } from "./types.js";
+import { vvMergeMax, vvMin } from "./vv.js";
 
 export class AckTable {
-  ack(_peer: string, _vv: VersionVector): void {
-    throw new Error("ack not implemented");
+  private readonly acks = new Map<string, VersionVector>();
+
+  ack(peer: string, vv: VersionVector): void {
+    const current = this.acks.get(peer);
+    this.acks.set(
+      peer,
+      current === undefined ? { ...vv } : vvMergeMax(current, vv),
+    );
   }
 
   minAck(): VersionVector {
-    throw new Error("minAck not implemented");
+    const vectors = [...this.acks.values()];
+    return vectors.length === 0 ? {} : vvMin(vectors);
   }
 
   peers(): string[] {
-    return [];
+    return [...this.acks.keys()].sort();
   }
 }

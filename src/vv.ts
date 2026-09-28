@@ -10,6 +10,15 @@ export function vvBump(vv: VersionVector, id: string, counter: number): VersionV
   return { ...vv, [id]: counter };
 }
 
+/** Per-dimension maximum of two version vectors. */
+export function vvMergeMax(a: VersionVector, b: VersionVector): VersionVector {
+  let out = { ...a };
+  for (const [id, counter] of Object.entries(b)) {
+    if (counter > vvGet(out, id)) out = { ...out, [id]: counter };
+  }
+  return out;
+}
+
 export function vvMin(vvs: VersionVector[]): VersionVector {
   if (vvs.length === 0) return {};
   const keys = new Set<string>();
