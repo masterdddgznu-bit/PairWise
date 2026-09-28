@@ -1,20 +1,34 @@
-/** Value -> keys secondary index. Starter stub. */
+/** Value -> keys secondary index. */
 export class SecondaryIndex {
-  add(_key: string, _value: string): void {
-    throw new Error("secindex add not implemented");
+  private readonly byValue = new Map<string, Set<string>>();
+
+  add(key: string, value: string): void {
+    let keys = this.byValue.get(value);
+    if (!keys) {
+      keys = new Set();
+      this.byValue.set(value, keys);
+    }
+    keys.add(key);
   }
 
-  remove(_key: string, _value: string): void {
-    throw new Error("secindex remove not implemented");
+  remove(key: string, value: string): void {
+    const keys = this.byValue.get(value);
+    if (!keys) return;
+    keys.delete(key);
+    if (keys.size === 0) this.byValue.delete(value);
   }
 
-  find(_value: string): string[] {
-    throw new Error("secindex find not implemented");
+  find(value: string): string[] {
+    const keys = this.byValue.get(value);
+    return keys ? [...keys].sort() : [];
   }
 
-  clear(): void {}
+  clear(): void {
+    this.byValue.clear();
+  }
 
-  rebuild(_entries: [string, string][]): void {
-    throw new Error("secindex rebuild not implemented");
+  rebuild(entries: [string, string][]): void {
+    this.clear();
+    for (const [key, value] of entries) this.add(key, value);
   }
 }

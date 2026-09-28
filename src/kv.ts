@@ -1,14 +1,20 @@
 import { VirtualClock } from "./clock.js";
+import { CheckpointStore } from "./checkpoint.js";
 import { MemTable } from "./memtable.js";
+import { recoverInto } from "./recover.js";
+import { SecondaryIndex } from "./secindex.js";
 import type { CheckpointMeta, DurabilityInfo, WalRecord } from "./types.js";
+import { WalLog } from "./wal.js";
 
 /**
- * WAL-backed KV with secondary index (feature incomplete).
- * Base memtable put/get/delete/has/keys/size work.
+ * WAL-backed KV with secondary index.
  */
 export class WalKV {
   readonly clock: VirtualClock;
   /** @internal */ readonly mem: MemTable;
+  private readonly wal = new WalLog();
+  private readonly checkpoints = new CheckpointStore();
+  private readonly idx = new SecondaryIndex();
 
   constructor(clock?: VirtualClock) {
     this.clock = clock ?? new VirtualClock();
@@ -16,7 +22,11 @@ export class WalKV {
   }
 
   put(key: string, value: string): void {
+    this.wal.append({ op: "put", key, value, at: this.clock.now() });
+    const old = this.mem.get(key);
     this.mem.put(key, value);
+    if (old !== undefined) this.idx.remove(key, old);
+    this.idx.add(key, value);
   }
 
   get(key: string): string | undefined {
@@ -24,7 +34,12 @@ export class WalKV {
   }
 
   delete(key: string): boolean {
-    return this.mem.delete(key);
+    const old = this.mem.get(key);
+    if (old === undefined) return false;
+    this.wal.append({ op: "delete", key, at: this.clock.now() });
+    this.mem.delete(key);
+    this.idx.remove(key, old);
+    return true;
   }
 
   has(key: string): boolean {
@@ -40,30 +55,41 @@ export class WalKV {
   }
 
   walRecords(): WalRecord[] {
-    throw new Error("walRecords not implemented");
+    return this.wal.records();
   }
 
   nextLsn(): number {
-    throw new Error("nextLsn not implemented");
+    return this.wal.nextLsn();
   }
 
   checkpoint(): CheckpointMeta {
-    throw new Error("checkpoint not implemented");
+    const meta: CheckpointMeta = {
+      lsn: this.wal.lastLsn(),
+      at: this.clock.now(),
+      keys: this.mem.size(),
+    };
+    this.checkpoints.save({ ...meta, data: this.mem.cloneMap() });
+    this.wal.truncateUpTo(meta.lsn);
+    return meta;
   }
 
   latestCheckpoint(): CheckpointMeta | null {
-    throw new Error("latestCheckpoint not implemented");
+    const snap = this.checkpoints.latest();
+    return snap ? { lsn: snap.lsn, at: snap.at, keys: snap.keys } : null;
   }
 
   crashAndRecover(): void {
-    throw new Error("crashAndRecover not implemented");
+    recoverInto(this.mem, this.idx, this.checkpoints.latest(), this.wal.records());
   }
 
-  findByValue(_value: string): string[] {
-    throw new Error("findByValue not implemented");
+  findByValue(value: string): string[] {
+    return this.idx.find(value);
   }
 
   durability(): DurabilityInfo {
-    throw new Error("durability not implemented");
+    return {
+      walLen: this.wal.records().length,
+      checkpointLsn: this.checkpoints.latest()?.lsn ?? null,
+    };
   }
 }

@@ -1,28 +1,38 @@
 import type { WalRecord } from "./types.js";
 
-/** Starter stub — feature must implement durable log. */
+/** Durable write-ahead log (in-memory simulation). */
 export class WalLog {
-  append(_rec: Omit<WalRecord, "lsn"> & { lsn?: number }): WalRecord {
-    throw new Error("wal append not implemented");
+  private log: WalRecord[] = [];
+  private last = 0;
+
+  append(rec: Omit<WalRecord, "lsn"> & { lsn?: number }): WalRecord {
+    const lsn = rec.lsn ?? this.last + 1;
+    if (lsn <= this.last) {
+      throw new Error(`lsn must be strictly increasing: got ${lsn}, last ${this.last}`);
+    }
+    const full: WalRecord = { ...rec, lsn };
+    this.log.push(full);
+    this.last = lsn;
+    return { ...full };
   }
 
   records(): WalRecord[] {
-    return [];
+    return this.log.map((r) => ({ ...r }));
   }
 
-  truncateUpTo(_lsn: number): void {
-    throw new Error("wal truncate not implemented");
+  truncateUpTo(lsn: number): void {
+    this.log = this.log.filter((r) => r.lsn > lsn);
   }
 
   nextLsn(): number {
-    return 1;
+    return this.last + 1;
   }
 
   lastLsn(): number {
-    return 0;
+    return this.last;
   }
 
   clear(): void {
-    /* durable log persists across crash — starter no-op */
+    /* durable log persists across crash */
   }
 }
