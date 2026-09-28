@@ -1,4 +1,5 @@
 import type { TxStatus } from "./types.js";
+import { TxStateError } from "./errors.js";
 
 export type TxState = {
   id: string;
@@ -10,15 +11,38 @@ export type TxState = {
 };
 
 export class TxTable {
-  begin(_snapTs: number): TxState {
-    throw new Error("begin not implemented");
+  private readonly txns = new Map<string, TxState>();
+  private seq = 0;
+
+  begin(snapTs: number): TxState {
+    this.seq += 1;
+    const id = `t${this.seq}`;
+    const tx: TxState = {
+      id,
+      snapTs,
+      readSet: new Set<string>(),
+      writes: new Map<string, string | null>(),
+      status: "active",
+    };
+    this.txns.set(id, tx);
+    return tx;
   }
 
-  get(_txId: string): TxState {
-    throw new Error("txn get not implemented");
+  get(txId: string): TxState {
+    const tx = this.txns.get(txId);
+    if (!tx) {
+      throw new TxStateError(`unknown transaction: ${txId}`);
+    }
+    return tx;
   }
 
   allCommitted(): TxState[] {
-    return [];
+    const committed: TxState[] = [];
+    for (const tx of this.txns.values()) {
+      if (tx.status === "committed") {
+        committed.push(tx);
+      }
+    }
+    return committed;
   }
 }
