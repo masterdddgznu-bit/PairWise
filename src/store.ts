@@ -1,5 +1,9 @@
 import { VirtualClock } from "./clock.js";
 import type { TxStatus } from "./types.js";
+import { TxStateError } from "./errors.js";
+import { TxTable, type TxState } from "./txn.js";
+import { VersionChain } from "./version.js";
+import { checkSkew, checkWw } from "./conflict.js";
 
 /**
  * Snapshot-isolation store with SSI write-skew detection (feature incomplete).
@@ -8,6 +12,9 @@ import type { TxStatus } from "./types.js";
 export class SkewStore {
   readonly clock: VirtualClock;
   private readonly map = new Map<string, string>();
+  private readonly txs = new TxTable();
+  private readonly versions = new VersionChain();
+  private clockTs = 0;
 
   constructor(clock?: VirtualClock) {
     this.clock = clock ?? new VirtualClock();
@@ -38,38 +45,76 @@ export class SkewStore {
   }
 
   begin(): string {
-    throw new Error("begin not implemented");
+    return this.txs.begin(this.clockTs).id;
   }
 
-  read(_tx: string, _key: string): string | undefined {
-    throw new Error("read not implemented");
+  read(tx: string, key: string): string | undefined {
+    const state = this.active(tx);
+    state.readSet.add(key);
+    if (state.writes.has(key)) {
+      const value = state.writes.get(key);
+      return value === null ? undefined : value;
+    }
+    return this.versions.readAt(key, state.snapTs);
   }
 
-  write(_tx: string, _key: string, _value: string): void {
-    throw new Error("write not implemented");
+  write(tx: string, key: string, value: string): void {
+    const state = this.active(tx);
+    state.writes.set(key, value);
   }
 
-  deleteTx(_tx: string, _key: string): void {
-    throw new Error("deleteTx not implemented");
+  deleteTx(tx: string, key: string): void {
+    const state = this.active(tx);
+    state.writes.set(key, null);
   }
 
-  commit(_tx: string): void {
-    throw new Error("commit not implemented");
+  commit(tx: string): void {
+    const state = this.active(tx);
+    const commitTs = ++this.clockTs;
+    if (state.writes.size === 0) {
+      state.status = "committed";
+      state.commitTs = commitTs;
+      return;
+    }
+    try {
+      checkWw(state, (key, snapTs) => this.versions.hasWriteAfter(key, snapTs));
+      checkSkew(state, commitTs, this.txs.allCommitted());
+    } catch (err) {
+      state.status = "aborted";
+      throw err;
+    }
+    for (const [key, value] of state.writes) {
+      this.versions.putCommitted(key, { value, commitTs, txId: state.id });
+    }
+    state.status = "committed";
+    state.commitTs = commitTs;
   }
 
-  abort(_tx: string): void {
-    throw new Error("abort not implemented");
+  abort(tx: string): void {
+    const state = this.txs.get(tx);
+    if (state.status === "committed") {
+      throw new TxStateError(`transaction ${tx} already committed`);
+    }
+    state.status = "aborted";
   }
 
-  status(_tx: string): TxStatus {
-    throw new Error("status not implemented");
+  status(tx: string): TxStatus {
+    return this.txs.get(tx).status;
   }
 
-  committedValue(_key: string): string | undefined {
-    throw new Error("committedValue not implemented");
+  committedValue(key: string): string | undefined {
+    return this.versions.latestCommitted(key);
   }
 
   commitTs(): number {
-    throw new Error("commitTs not implemented");
+    return this.clockTs;
+  }
+
+  private active(tx: string): TxState {
+    const state = this.txs.get(tx);
+    if (state.status !== "active") {
+      throw new TxStateError(`transaction ${tx} is ${state.status}`);
+    }
+    return state;
   }
 }
