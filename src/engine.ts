@@ -1,4 +1,10 @@
 import { VirtualClock } from "./clock.js";
+import { LateWinError } from "./errors.js";
+import { IdRegistry } from "./idempotency.js";
+import { SessionWindows } from "./session.js";
+import { SideOutput } from "./side.js";
+import { ProcessingTriggers } from "./triggers.js";
+import { TumblingWindows } from "./tumbling.js";
 import type {
   Agg,
   EmitResult,
@@ -6,6 +12,7 @@ import type {
   SessionAgg,
   StreamEvent,
 } from "./types.js";
+import { WatermarkTrack } from "./watermark.js";
 
 /**
  * Late-data window engine.
@@ -15,6 +22,12 @@ export class LateWin {
   readonly clock: VirtualClock;
   private readonly map = new Map<string, number>();
   private readonly allowedLateness: number;
+  private readonly wm = new WatermarkTrack();
+  private readonly ids = new IdRegistry();
+  private readonly tumbling = new TumblingWindows();
+  private readonly sessions = new SessionWindows();
+  private readonly side = new SideOutput();
+  private readonly triggers = new ProcessingTriggers();
 
   constructor(clock?: VirtualClock, opts?: LateWinOpts) {
     this.clock = clock ?? new VirtualClock();
@@ -45,52 +58,80 @@ export class LateWin {
     return this.map.size;
   }
 
-  emit(_ev: StreamEvent): EmitResult {
-    throw new Error("emit not implemented");
+  emit(ev: StreamEvent): EmitResult {
+    if (!this.ids.check(ev.id)) return "duplicate";
+
+    if (
+      this.tumbling.enabled() &&
+      !this.tumbling.isOpen(ev.eventTime, this.wm.value(), this.allowedLateness)
+    ) {
+      this.side.push(ev);
+      return "late";
+    }
+
+    if (this.tumbling.enabled()) this.tumbling.onEvent(ev, this.wm.value(), this.allowedLateness);
+
+    if (this.sessions.enabled()) {
+      const sessionResult = this.sessions.onEvent(ev);
+      if (sessionResult === "late") {
+        this.side.push(ev);
+        return "late";
+      }
+    }
+
+    return "ok";
   }
 
-  advanceWatermark(_t: number): void {
-    throw new Error("advanceWatermark not implemented");
+  advanceWatermark(t: number): void {
+    this.wm.advance(t);
+    this.tumbling.onWatermark(this.wm.value(), this.allowedLateness);
+    this.sessions.onWatermark(this.wm.value(), this.allowedLateness);
   }
 
   watermark(): number {
-    throw new Error("watermark not implemented");
+    return this.wm.value();
   }
 
-  enableTumbling(_size: number): void {
-    throw new Error("enableTumbling not implemented");
+  enableTumbling(size: number): void {
+    this.tumbling.enable(size);
   }
 
-  tumblingResult(_start: number): Agg[] {
-    throw new Error("tumblingResult not implemented");
+  tumblingResult(start: number): Agg[] {
+    if (!this.tumbling.enabled()) throw new LateWinError("tumbling not enabled");
+    return this.tumbling.result(start);
   }
 
   closedTumbling(): number[] {
-    throw new Error("closedTumbling not implemented");
+    if (!this.tumbling.enabled()) throw new LateWinError("tumbling not enabled");
+    return this.tumbling.closed();
   }
 
   sideOutput(): StreamEvent[] {
-    throw new Error("sideOutput not implemented");
+    return this.side.list();
   }
 
-  enableSession(_gap: number): void {
-    throw new Error("enableSession not implemented");
+  enableSession(gap: number): void {
+    this.sessions.enable(gap);
   }
 
   sessionResults(): SessionAgg[] {
-    throw new Error("sessionResults not implemented");
+    if (!this.sessions.enabled()) throw new LateWinError("session not enabled");
+    return this.sessions.results();
   }
 
-  armProcessingTrigger(_windowStart: number, _fireAt: number): void {
-    throw new Error("armProcessingTrigger not implemented");
+  armProcessingTrigger(windowStart: number, fireAt: number): void {
+    if (!this.tumbling.enabled()) throw new LateWinError("tumbling not enabled");
+    this.triggers.arm(windowStart, fireAt);
   }
 
   tick(): void {
-    throw new Error("tick not implemented");
+    this.triggers.tick(this.clock.now(), (start) =>
+      this.tumbling.snapshot(start),
+    );
   }
 
-  triggeredResults(_windowStart: number): Agg[] | null {
-    throw new Error("triggeredResults not implemented");
+  triggeredResults(windowStart: number): Agg[] | null {
+    return this.triggers.get(windowStart);
   }
 
   /** expose for silence unused in starter */
