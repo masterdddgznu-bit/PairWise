@@ -1,6 +1,7 @@
-export function nextIndex(_i: number, _n: number): number {
-  return 0;
+export function nextIndex(i: number, n: number): number {
+  return (i + 1) % n;
 }
-export function defaultUids(_n: number): number[] {
-  return [];
+
+export function defaultUids(n: number): number[] {
+  return Array.from({ length: n }, (_, index) => index);
 }
