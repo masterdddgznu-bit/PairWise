@@ -1,28 +1,74 @@
 import { BloomError } from "./errors.js";
+import { fnv1a32 } from "./hash.js";
 
-/** Bloom filter — starter stub. */
+/** Classic bit-array Bloom filter; bit strings are little-endian (LSB first). */
 export class BloomFilter {
-  constructor(_mBits: number, _kHashes: number) {
-    throw new BloomError("BloomFilter not implemented");
+  private readonly bits: Uint8Array;
+
+  constructor(
+    readonly mBits: number,
+    readonly kHashes: number,
+  ) {
+    if (!Number.isInteger(mBits) || mBits <= 0) {
+      throw new BloomError("mBits must be a positive integer");
+    }
+    if (!Number.isInteger(kHashes) || kHashes <= 0) {
+      throw new BloomError("kHashes must be a positive integer");
+    }
+    this.bits = new Uint8Array(mBits);
   }
 
-  add(_key: string): void {
-    throw new BloomError("add not implemented");
+  private positions(key: string): number[] {
+    const positions: number[] = [];
+    for (let i = 0; i < this.kHashes; i++) {
+      positions.push(fnv1a32(key, i) % this.mBits);
+    }
+    return positions;
   }
 
-  mightContain(_key: string): boolean {
-    throw new BloomError("mightContain not implemented");
+  add(key: string): void {
+    for (const position of this.positions(key)) {
+      this.bits[position] = 1;
+    }
+  }
+
+  mightContain(key: string): boolean {
+    return this.positions(key).every((position) => this.bits[position] === 1);
   }
 
   toBits(): string {
-    throw new BloomError("toBits not implemented");
+    let out = "";
+    for (let i = 0; i < this.mBits; i++) {
+      out += this.bits[i] === 1 ? "1" : "0";
+    }
+    return out;
   }
 
-  static fromBits(_bits: string, _k: number): BloomFilter {
-    throw new BloomError("fromBits not implemented");
+  static fromBits(bits: string, k: number): BloomFilter {
+    if (bits.length === 0) {
+      throw new BloomError("bits must be a non-empty 0/1 string");
+    }
+    if (!Number.isInteger(k) || k <= 0) {
+      throw new BloomError("kHashes must be a positive integer");
+    }
+    if (!/^[01]+$/.test(bits)) {
+      throw new BloomError("bits may only contain '0' and '1'");
+    }
+    const filter = new BloomFilter(bits.length, k);
+    for (let i = 0; i < bits.length; i++) {
+      if (bits[i] === "1") filter.bits[i] = 1;
+    }
+    return filter;
   }
 
-  union(_other: BloomFilter): BloomFilter {
-    throw new BloomError("union not implemented");
+  union(other: BloomFilter): BloomFilter {
+    if (other.mBits !== this.mBits || other.kHashes !== this.kHashes) {
+      throw new BloomError("union requires filters with matching m and k");
+    }
+    const merged = new BloomFilter(this.mBits, this.kHashes);
+    for (let i = 0; i < this.mBits; i++) {
+      merged.bits[i] = this.bits[i] === 1 || other.bits[i] === 1 ? 1 : 0;
+    }
+    return merged;
   }
 }

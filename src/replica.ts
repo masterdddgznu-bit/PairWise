@@ -1,25 +1,21 @@
 import { KeySet } from "./keyset.js";
 import type { Summary } from "./types.js";
-import type { Sketch } from "./sketch.js";
+import { BloomFilter } from "./bloom.js";
+import { Sketch } from "./sketch.js";
+import { xorFingerprint } from "./hash.js";
 
-/** Bloom-based replica — KeySet ops work; sync stubs throw. */
+/** Bloom-based replica: local KeySet plus summary / sketch reconciliation. */
 export class Replica {
   readonly id: string;
   private readonly set = new KeySet();
-  private readonly mBits: number;
-  private readonly kHashes: number;
-  private readonly sketchBuckets: number;
 
   constructor(
     id: string,
-    mBits = 64,
-    kHashes = 4,
-    sketchBuckets = 16,
+    private readonly mBits = 64,
+    private readonly kHashes = 4,
+    private readonly sketchBuckets = 16,
   ) {
     this.id = id;
-    this.mBits = mBits;
-    this.kHashes = kHashes;
-    this.sketchBuckets = sketchBuckets;
   }
 
   add(key: string): void {
@@ -43,30 +39,72 @@ export class Replica {
   }
 
   summary(): Summary {
-    throw new Error("summary not implemented");
+    const keys = this.set.values();
+    const bloom = new BloomFilter(this.mBits, this.kHashes);
+    for (const key of keys) bloom.add(key);
+    return {
+      bloomBits: bloom.toBits(),
+      size: keys.length,
+      xorFingerprint: xorFingerprint(keys),
+    };
   }
 
-  keysAbsentFrom(_peerSummary: Summary): string[] {
-    throw new Error("keysAbsentFrom not implemented");
+  /** Local keys the peer's Bloom filter proves absent (no false negatives). */
+  keysAbsentFrom(peerSummary: Summary): string[] {
+    const peerBloom = BloomFilter.fromBits(
+      peerSummary.bloomBits,
+      this.kHashes,
+    );
+    return this.set
+      .values()
+      .filter((key) => !peerBloom.mightContain(key))
+      .sort();
   }
 
-  ingest(_keys: string[]): number {
-    throw new Error("ingest not implemented");
+  ingest(keys: string[]): number {
+    let added = 0;
+    for (const key of keys) {
+      if (!this.set.has(key)) {
+        this.set.add(key);
+        added++;
+      }
+    }
+    return added;
   }
 
-  fingerprintMismatch(_peerSummary: Summary): boolean {
-    throw new Error("fingerprintMismatch not implemented");
+  fingerprintMismatch(peerSummary: Summary): boolean {
+    const local = this.summary();
+    return (
+      local.size !== peerSummary.size ||
+      local.xorFingerprint !== peerSummary.xorFingerprint
+    );
   }
 
-  exactMissingViaSketch(_peerSketch: Sketch): string[] {
-    throw new Error("exactMissingViaSketch not implemented");
+  /** Local-only keys recovered exactly from an IBLT-lite sketch difference. */
+  exactMissingViaSketch(peerSketch: Sketch): string[] {
+    const localSketch = Sketch.fromKeys(this.set.values(), this.sketchBuckets);
+    return localSketch.diff(peerSketch, this.set.values());
   }
 
-  static sync(_a: Replica, _b: Replica): {
+  /** Exchange Bloom-proved-absent keys both ways, then check convergence. */
+  static sync(a: Replica, b: Replica): {
     fromAtoB: string[];
     fromBtoA: string[];
     converged: boolean;
   } {
-    throw new Error("sync not implemented");
+    const summaryA = a.summary();
+    const summaryB = b.summary();
+
+    const fromAtoB = a.keysAbsentFrom(summaryB);
+    const fromBtoA = b.keysAbsentFrom(summaryA);
+
+    b.ingest(fromAtoB);
+    a.ingest(fromBtoA);
+
+    const converged =
+      !a.fingerprintMismatch(b.summary()) &&
+      !b.fingerprintMismatch(a.summary());
+
+    return { fromAtoB, fromBtoA, converged };
   }
 }
