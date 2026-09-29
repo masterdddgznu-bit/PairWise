@@ -1,8 +1,10 @@
 import { KeySet } from "./keyset.js";
+import { BloomFilter } from "./bloom.js";
+import { Sketch } from "./sketch.js";
+import { xorFingerprint } from "./hash.js";
 import type { Summary } from "./types.js";
-import type { Sketch } from "./sketch.js";
 
-/** Bloom-based replica — KeySet ops work; sync stubs throw. */
+/** Bloom-based replica with summary exchange and sketch-assisted sync. */
 export class Replica {
   readonly id: string;
   private readonly set = new KeySet();
@@ -42,31 +44,66 @@ export class Replica {
     return this.set.size();
   }
 
+  private bloom(): BloomFilter {
+    const bf = new BloomFilter(this.mBits, this.kHashes);
+    for (const key of this.set.values()) {
+      bf.add(key);
+    }
+    return bf;
+  }
+
   summary(): Summary {
-    throw new Error("summary not implemented");
+    return {
+      bloomBits: this.bloom().toBits(),
+      size: this.set.size(),
+      xorFingerprint: xorFingerprint(this.set.values()),
+    };
   }
 
-  keysAbsentFrom(_peerSummary: Summary): string[] {
-    throw new Error("keysAbsentFrom not implemented");
+  keysAbsentFrom(peerSummary: Summary): string[] {
+    const peerBloom = BloomFilter.fromBits(
+      peerSummary.bloomBits,
+      this.kHashes,
+    );
+    return this.set.values().filter((key) => !peerBloom.mightContain(key));
   }
 
-  ingest(_keys: string[]): number {
-    throw new Error("ingest not implemented");
+  ingest(keys: string[]): number {
+    let added = 0;
+    for (const key of keys) {
+      if (!this.set.has(key)) {
+        this.set.add(key);
+        added += 1;
+      }
+    }
+    return added;
   }
 
-  fingerprintMismatch(_peerSummary: Summary): boolean {
-    throw new Error("fingerprintMismatch not implemented");
+  fingerprintMismatch(peerSummary: Summary): boolean {
+    const local = this.summary();
+    return (
+      local.xorFingerprint !== peerSummary.xorFingerprint ||
+      local.size !== peerSummary.size
+    );
   }
 
-  exactMissingViaSketch(_peerSketch: Sketch): string[] {
-    throw new Error("exactMissingViaSketch not implemented");
+  exactMissingViaSketch(peerSketch: Sketch): string[] {
+    const local = Sketch.fromKeys(this.set.values(), this.sketchBuckets);
+    return local.diff(peerSketch, this.set.values());
   }
 
-  static sync(_a: Replica, _b: Replica): {
+  static sync(a: Replica, b: Replica): {
     fromAtoB: string[];
     fromBtoA: string[];
     converged: boolean;
   } {
-    throw new Error("sync not implemented");
+    const summaryA = a.summary();
+    const summaryB = b.summary();
+    const fromAtoB = a.keysAbsentFrom(summaryB);
+    const fromBtoA = b.keysAbsentFrom(summaryA);
+    b.ingest(fromAtoB);
+    a.ingest(fromBtoA);
+    const converged = !a.fingerprintMismatch(b.summary());
+    return { fromAtoB, fromBtoA, converged };
   }
 }
