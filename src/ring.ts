@@ -1,4 +1,15 @@
-export function leftIndex(_i: number, _n: number): number { return 0; }
-export function rightIndex(_i: number, _n: number): number { return 0; }
-export function defaultUids(_n: number): number[] { return []; }
-export function hopForPhase(_phase: number): number { return 1; }
+export function leftIndex(i: number, n: number): number {
+  return (i - 1 + n) % n;
+}
+
+export function rightIndex(i: number, n: number): number {
+  return (i + 1) % n;
+}
+
+export function defaultUids(n: number): number[] {
+  return Array.from({ length: n }, (_, i) => i);
+}
+
+export function hopForPhase(phase: number): number {
+  return 2 ** phase;
+}
