@@ -17,6 +17,12 @@ export function cmpDotDesc(a: Dot, b: Dot): number {
   return -cmpDotAsc(a, b);
 }
 
+/** Sibling order: larger (counter, replicaId) sorts closer to the parent. */
+export function cmpSiblingDesc(a: Dot, b: Dot): number {
+  if (a.counter !== b.counter) return b.counter - a.counter;
+  return b.replicaId.localeCompare(a.replicaId);
+}
+
 export function sortDotsAsc(dots: Dot[]): Dot[] {
   return [...dots].sort(cmpDotAsc);
 }
