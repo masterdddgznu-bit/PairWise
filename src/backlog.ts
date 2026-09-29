@@ -1,18 +1,24 @@
-/** FIFO backlog queue — starter stub for feature drain. */
+/** FIFO backlog queue for messages waiting on credits. */
 export class BacklogQueue {
-  push(_msg: string): void {
-    throw new Error("backlog push not implemented");
+  private readonly messages: string[] = [];
+
+  push(msg: string): void {
+    this.messages.push(msg);
   }
 
   shift(): string | undefined {
-    return undefined;
+    return this.messages.shift();
   }
 
   size(): number {
-    return 0;
+    return this.messages.length;
   }
 
   peek(): string | undefined {
-    return undefined;
+    return this.messages[0];
+  }
+
+  clear(): void {
+    this.messages.length = 0;
   }
 }

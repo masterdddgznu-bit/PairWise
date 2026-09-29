@@ -1,6 +1,7 @@
 import { VirtualClock } from "./clock.js";
 import { BacklogQueue } from "./backlog.js";
 import { CreditLedger } from "./credits.js";
+import { CreditError } from "./errors.js";
 import type { CreditStats } from "./types.js";
 
 /**
@@ -32,7 +33,14 @@ export class CreditPipe {
       this.ready.push(msg);
       return true;
     }
-    throw new Error("feature enqueue not implemented");
+    if (this.ledger!.tryConsume(1)) {
+      this.consumed += 1;
+      this.ready.push(msg);
+      return true;
+    }
+    this.rejected += 1;
+    this.backlog!.push(msg);
+    return false;
   }
 
   dequeue(): string | undefined {
@@ -49,49 +57,62 @@ export class CreditPipe {
 
   clear(): void {
     this.ready.length = 0;
+    this.backlog?.clear();
   }
 
   peerId(): string {
-    if (!this.feature || this.id === null) throw new Error("peerId requires feature mode");
+    if (this.id === null) throw new CreditError("peerId requires feature mode");
     return this.id;
   }
 
-  grant(_n: number): void {
-    if (!this.ledger) throw new Error("grant requires feature mode");
-    this.ledger.grant(_n);
+  grant(n: number): void {
+    if (!this.ledger) throw new CreditError("grant requires feature mode");
+    this.ledger.grant(n);
+    this.flushBacklog();
   }
 
   creditsLeft(): number {
-    if (!this.ledger) throw new Error("creditsLeft requires feature mode");
+    if (!this.ledger) throw new CreditError("creditsLeft requires feature mode");
     return this.ledger.creditsLeft();
   }
 
-  offerGrant(_fromPeer: string, _n: number, _ttlMs: number): void {
-    if (!this.ledger) throw new Error("offerGrant requires feature mode");
-    this.ledger.offerGrant(_fromPeer, _n, _ttlMs);
+  offerGrant(fromPeer: string, n: number, ttlMs: number): void {
+    if (!this.ledger) throw new CreditError("offerGrant requires feature mode");
+    this.ledger.offerGrant(fromPeer, n, ttlMs);
+    this.flushBacklog();
   }
 
   reclaim(): number {
-    if (!this.ledger) throw new Error("reclaim requires feature mode");
+    if (!this.ledger) throw new CreditError("reclaim requires feature mode");
     return this.ledger.reclaim();
   }
 
   flushBacklog(): number {
-    if (!this.ledger || !this.backlog) throw new Error("flushBacklog requires feature mode");
-    throw new Error("flushBacklog not implemented");
+    if (!this.ledger || !this.backlog) {
+      throw new CreditError("flushBacklog requires feature mode");
+    }
+    let moved = 0;
+    while (this.backlog.size() > 0 && this.ledger.tryConsume(1)) {
+      this.consumed += 1;
+      this.ready.push(this.backlog.shift()!);
+      moved += 1;
+    }
+    return moved;
   }
 
-  reserve(_n: number): boolean {
-    if (!this.ledger) throw new Error("reserve requires feature mode");
-    return this.ledger.reserve(_n);
+  reserve(n: number): boolean {
+    if (!this.ledger) throw new CreditError("reserve requires feature mode");
+    return this.ledger.reserve(n);
   }
 
-  release(_n: number): void {
-    if (!this.ledger) throw new Error("release requires feature mode");
-    this.ledger.release(_n);
+  release(n: number): void {
+    if (!this.ledger) throw new CreditError("release requires feature mode");
+    this.ledger.release(n);
+    this.flushBacklog();
   }
 
   sendWindow(): number {
+    if (!this.ledger) throw new CreditError("sendWindow requires feature mode");
     return this.creditsLeft();
   }
 
@@ -100,8 +121,7 @@ export class CreditPipe {
   }
 
   backlogSize(): number {
-    if (!this.backlog) return 0;
-    return this.backlog.size();
+    return this.backlog?.size() ?? 0;
   }
 
   stats(): CreditStats {
