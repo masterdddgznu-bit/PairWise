@@ -12,4 +12,18 @@ export class RProc {
     this.id = id;
     this.parent = parent;
   }
+
+  enqueueRequester(id: number): void {
+    if (!this.queue.includes(id)) {
+      this.queue.push(id);
+    }
+  }
+
+  shiftQueue(): number | undefined {
+    return this.queue.shift();
+  }
+
+  popInbox(): Message | undefined {
+    return this.inbox.shift();
+  }
 }
