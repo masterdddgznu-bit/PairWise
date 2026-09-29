@@ -12,4 +12,12 @@ export class CProc {
     this.id = id;
     this.uid = uid;
   }
+
+  enqueue(message: Message): void {
+    this.inbox.push(message);
+  }
+
+  dequeue(): Message | undefined {
+    return this.inbox.shift();
+  }
 }
