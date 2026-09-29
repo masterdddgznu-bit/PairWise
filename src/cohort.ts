@@ -10,4 +10,9 @@ export class Cohort {
   constructor(id: number) {
     this.id = id;
   }
+
+  reset(): void {
+    this.state = "idle";
+    this.inbox = [];
+  }
 }
