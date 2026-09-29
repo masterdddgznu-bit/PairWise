@@ -32,7 +32,14 @@ export class CreditPipe {
       this.ready.push(msg);
       return true;
     }
-    throw new Error("feature enqueue not implemented");
+    if (this.ledger!.tryConsume(1)) {
+      this.ready.push(msg);
+      this.consumed += 1;
+      return true;
+    }
+    this.backlog!.push(msg);
+    this.rejected += 1;
+    return false;
   }
 
   dequeue(): string | undefined {
@@ -49,6 +56,7 @@ export class CreditPipe {
 
   clear(): void {
     this.ready.length = 0;
+    this.backlog?.clear();
   }
 
   peerId(): string {
@@ -56,9 +64,10 @@ export class CreditPipe {
     return this.id;
   }
 
-  grant(_n: number): void {
+  grant(n: number): void {
     if (!this.ledger) throw new Error("grant requires feature mode");
-    this.ledger.grant(_n);
+    this.ledger.grant(n);
+    this.flushBacklog();
   }
 
   creditsLeft(): number {
@@ -66,9 +75,10 @@ export class CreditPipe {
     return this.ledger.creditsLeft();
   }
 
-  offerGrant(_fromPeer: string, _n: number, _ttlMs: number): void {
+  offerGrant(fromPeer: string, n: number, ttlMs: number): void {
     if (!this.ledger) throw new Error("offerGrant requires feature mode");
-    this.ledger.offerGrant(_fromPeer, _n, _ttlMs);
+    this.ledger.offerGrant(fromPeer, n, ttlMs);
+    this.flushBacklog();
   }
 
   reclaim(): number {
@@ -78,17 +88,26 @@ export class CreditPipe {
 
   flushBacklog(): number {
     if (!this.ledger || !this.backlog) throw new Error("flushBacklog requires feature mode");
-    throw new Error("flushBacklog not implemented");
+    let moved = 0;
+    while (this.backlog.size() > 0 && this.ledger.creditsLeft() > 0) {
+      if (!this.ledger.tryConsume(1)) break;
+      const msg = this.backlog.shift();
+      if (msg === undefined) break;
+      this.ready.push(msg);
+      this.consumed += 1;
+      moved += 1;
+    }
+    return moved;
   }
 
-  reserve(_n: number): boolean {
+  reserve(n: number): boolean {
     if (!this.ledger) throw new Error("reserve requires feature mode");
-    return this.ledger.reserve(_n);
+    return this.ledger.reserve(n);
   }
 
-  release(_n: number): void {
+  release(n: number): void {
     if (!this.ledger) throw new Error("release requires feature mode");
-    this.ledger.release(_n);
+    this.ledger.release(n);
   }
 
   sendWindow(): number {
