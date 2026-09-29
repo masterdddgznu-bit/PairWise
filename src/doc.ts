@@ -1,4 +1,10 @@
 import type { Atom, Delta, Dot, VersionVector } from "./types.js";
+import { AtomStore } from "./atoms.js";
+import { AckTable } from "./gc.js";
+import { extractDelta, applyDeltaToStore } from "./delta.js";
+import { visibleDotOrder, visibleString } from "./order.js";
+import { vvFromAtoms, vvGet } from "./vv.js";
+import { RgaError } from "./errors.js";
 
 /**
  * Replicated Growable Array sequence CRDT.
@@ -6,10 +12,20 @@ import type { Atom, Delta, Dot, VersionVector } from "./types.js";
  */
 export class RgaDoc {
   private readonly chars: string[] = [];
+  private readonly store = new AtomStore();
+  private readonly acks = new AckTable();
+  private localCounter = 0;
   readonly replicaId: string | null;
 
   constructor(replicaId?: string) {
     this.replicaId = replicaId ?? null;
+  }
+
+  private requireReplica(): string {
+    if (this.replicaId === null) {
+      throw new RgaError("replica operation requires a replicaId");
+    }
+    return this.replicaId;
   }
 
   insert(index: number, ch: string): void {
@@ -18,7 +34,10 @@ export class RgaDoc {
       this.chars.splice(i, 0, ch);
       return;
     }
-    throw new Error("replica insert not implemented");
+    const ids = this.visibleIds();
+    const i = Math.max(0, Math.min(index, ids.length));
+    const after = i === 0 ? null : ids[i - 1]!;
+    this.insertAfter(after, ch);
   }
 
   delete(index: number): boolean {
@@ -27,60 +46,73 @@ export class RgaDoc {
       this.chars.splice(index, 1);
       return true;
     }
-    throw new Error("replica delete not implemented");
+    const id = this.visibleIds()[index];
+    if (id === undefined) return false;
+    return this.deleteById(id);
   }
 
   toString(): string {
     if (this.replicaId === null) return this.chars.join("");
-    throw new Error("replica toString not implemented");
+    return visibleString(this.store.all());
   }
 
   length(): number {
     if (this.replicaId === null) return this.chars.length;
-    throw new Error("replica length not implemented");
+    return this.visibleIds().length;
   }
 
-  insertAfter(_after: Dot | null, _ch: string): Dot {
-    throw new Error("insertAfter not implemented");
+  insertAfter(after: Dot | null, ch: string): Dot {
+    const replicaId = this.requireReplica();
+    this.localCounter += 1;
+    const id: Dot = { replicaId, counter: this.localCounter };
+    this.store.insertAfter(after, ch, id);
+    return id;
   }
 
-  deleteById(_id: Dot): boolean {
-    throw new Error("deleteById not implemented");
+  deleteById(id: Dot): boolean {
+    this.requireReplica();
+    return this.store.tombstone(id);
   }
 
-  merge(_other: RgaDoc): void {
-    throw new Error("merge not implemented");
+  merge(other: RgaDoc): void {
+    this.requireReplica();
+    this.store.mergeFrom(other.store);
   }
 
   versionVector(): VersionVector {
-    throw new Error("versionVector not implemented");
+    return vvFromAtoms(this.store.all());
   }
 
-  deltaSince(_vv: VersionVector): Delta {
-    throw new Error("deltaSince not implemented");
+  deltaSince(vv: VersionVector): Delta {
+    this.requireReplica();
+    return extractDelta(this.store, vv);
   }
 
-  applyDelta(_delta: Delta): void {
-    throw new Error("applyDelta not implemented");
+  applyDelta(delta: Delta): void {
+    this.requireReplica();
+    applyDeltaToStore(this.store, delta);
   }
 
-  ack(_peer: string, _vv: VersionVector): void {
-    throw new Error("ack not implemented");
+  ack(peer: string, vv: VersionVector): void {
+    this.acks.ack(peer, vv);
   }
 
   minAckVV(): VersionVector {
-    throw new Error("minAckVV not implemented");
+    return this.acks.minAck();
   }
 
   gc(): number {
-    throw new Error("gc not implemented");
+    const min = this.minAckVV();
+    return this.store.gcTombstones(
+      (id) => id.counter <= vvGet(min, id.replicaId),
+    );
   }
 
-  getAtom(_id: Dot): Atom | undefined {
-    throw new Error("getAtom not implemented");
+  getAtom(id: Dot): Atom | undefined {
+    return this.store.get(id);
   }
 
   visibleIds(): Dot[] {
-    throw new Error("visibleIds not implemented");
+    return visibleDotOrder(this.store.all());
   }
 }

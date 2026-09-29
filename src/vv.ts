@@ -1,4 +1,4 @@
-import type { VersionVector } from "./types.js";
+import type { Atom, VersionVector } from "./types.js";
 
 export function vvGet(vv: VersionVector, id: string): number {
   return vv[id] ?? 0;
@@ -17,6 +17,15 @@ export function vvMin(vvs: VersionVector[]): VersionVector {
   const out: VersionVector = {};
   for (const k of [...keys].sort()) {
     out[k] = Math.min(...vvs.map((v) => vvGet(v, k)));
+  }
+  return out;
+}
+
+export function vvFromAtoms(atoms: Atom[]): VersionVector {
+  const out: VersionVector = {};
+  for (const atom of atoms) {
+    const cur = vvGet(out, atom.id.replicaId);
+    if (atom.id.counter > cur) out[atom.id.replicaId] = atom.id.counter;
   }
   return out;
 }
