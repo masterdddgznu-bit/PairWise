@@ -1,23 +1,39 @@
 import type { VirtualClock } from "./clock.js";
 import type { InvalidationRecord } from "./types.js";
 
-/** Invalidation queue — starter stub. */
+/** Append-only invalidation queue with TTL-based reaping. */
 export class InvQueue {
-  constructor(_clock: VirtualClock) {}
+  private readonly records: InvalidationRecord[] = [];
 
-  push(_record: InvalidationRecord): void {
-    throw new Error("InvQueue push not implemented");
+  constructor(private readonly clock: VirtualClock) {}
+
+  push(record: InvalidationRecord): void {
+    this.records.push(record);
   }
 
-  all(): InvalidationRecord[] {
-    throw new Error("InvQueue all not implemented");
+  /** Records in generation order. */
+  all(): readonly InvalidationRecord[] {
+    return this.records;
   }
 
-  reap(_ttlMs: number, _allApplied: (gen: number) => boolean): number {
-    throw new Error("InvQueue reap not implemented");
+  /**
+   * Drop records that are older than `ttlMs` (by clock time) and have been
+   * applied on every shard. Returns the number of records dropped.
+   */
+  reap(ttlMs: number, allApplied: (record: InvalidationRecord) => boolean): number {
+    const now = this.clock.now();
+    let dropped = 0;
+    for (let i = this.records.length - 1; i >= 0; i--) {
+      const record = this.records[i];
+      if (now - record.at >= ttlMs && allApplied(record)) {
+        this.records.splice(i, 1);
+        dropped++;
+      }
+    }
+    return dropped;
   }
 
   count(): number {
-    throw new Error("InvQueue count not implemented");
+    return this.records.length;
   }
 }
