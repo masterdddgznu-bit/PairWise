@@ -1,45 +1,114 @@
 import { HllError } from "./errors.js";
 import type { HllStats } from "./types.js";
+import { fnv1a32 } from "./hash.js";
+import { rhoFromHash } from "./rho.js";
+import { estimateFromRegisters } from "./estimate.js";
 
-/** HyperLogLog — starter stub. */
+const MIN_PRECISION = 4;
+const MAX_PRECISION = 16;
+
+function validatePrecision(precision: number): void {
+  if (
+    typeof precision !== "number" ||
+    !Number.isInteger(precision) ||
+    precision < MIN_PRECISION ||
+    precision > MAX_PRECISION
+  ) {
+    throw new HllError(
+      `precision must be an integer in [${MIN_PRECISION}, ${MAX_PRECISION}], got ${String(precision)}`,
+    );
+  }
+}
+
+/** Deterministic HyperLogLog sketch over FNV-1a hashed string keys. */
 export class HyperLogLog {
-  constructor(_precision: number) {
-    /* params accepted; methods throw until implemented */
+  private readonly precision: number;
+  private readonly registers: number[];
+  private frozen = false;
+  private adds = 0;
+
+  constructor(precision: number) {
+    validatePrecision(precision);
+    this.precision = precision;
+    this.registers = new Array(1 << precision).fill(0);
   }
 
-  add(_key: string): void {
-    throw new Error("add not implemented");
+  add(key: string): void {
+    if (this.frozen) throw new HllError("cannot add to a frozen HyperLogLog");
+    const { idx, rho } = rhoFromHash(fnv1a32(key), this.precision);
+    if (rho > this.registers[idx]) this.registers[idx] = rho;
+    this.adds++;
   }
 
   estimate(): number {
-    throw new Error("estimate not implemented");
+    return estimateFromRegisters(this.registers);
   }
 
-  merge(_other: HyperLogLog): void {
-    throw new Error("merge not implemented");
+  merge(other: HyperLogLog): void {
+    if (this.frozen) throw new HllError("cannot merge into a frozen HyperLogLog");
+    if (other.precision !== this.precision) {
+      throw new HllError(
+        `precision mismatch: cannot merge p=${other.precision} into p=${this.precision}`,
+      );
+    }
+    for (let j = 0; j < this.registers.length; j++) {
+      if (other.registers[j] > this.registers[j]) {
+        this.registers[j] = other.registers[j];
+      }
+    }
   }
 
   exportRegisters(): number[] {
-    throw new Error("exportRegisters not implemented");
+    return [...this.registers];
   }
 
-  static fromRegisters(_regs: number[]): HyperLogLog {
-    throw new Error("fromRegisters not implemented");
+  static fromRegisters(regs: number[]): HyperLogLog {
+    if (!Array.isArray(regs)) {
+      throw new HllError("registers must be an array");
+    }
+    const m = regs.length;
+    const p = 31 - Math.clz32(m);
+    if (
+      m < (1 << MIN_PRECISION) ||
+      m > (1 << MAX_PRECISION) ||
+      (m & (m - 1)) !== 0
+    ) {
+      throw new HllError(`register array length must be a power of two in [16, 65536], got ${m}`);
+    }
+    const maxRho = 32 - p + 1;
+    for (const value of regs) {
+      if (!Number.isInteger(value) || value < 0 || value > maxRho) {
+        throw new HllError(`register values must be integers in [0, ${maxRho}], got ${value}`);
+      }
+    }
+    const sketch = new HyperLogLog(p);
+    sketch.registers.splice(0, m, ...regs);
+    return sketch;
   }
 
   freeze(): void {
-    throw new Error("freeze not implemented");
+    this.frozen = true;
   }
 
   isFrozen(): boolean {
-    throw new Error("isFrozen not implemented");
+    return this.frozen;
   }
 
   zeros(): number {
-    throw new Error("zeros not implemented");
+    let count = 0;
+    for (const value of this.registers) {
+      if (value === 0) count++;
+    }
+    return count;
   }
 
   stats(): HllStats {
-    throw new Error("stats not implemented");
+    return {
+      precision: this.precision,
+      m: this.registers.length,
+      zeros: this.zeros(),
+      frozen: this.frozen,
+      adds: this.adds,
+    };
   }
 }
