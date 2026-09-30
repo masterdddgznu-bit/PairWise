@@ -7,9 +7,18 @@ export class EProc {
   parent: number | null = null;
   children: number[] = [];
   pending = new Set<number>();
+  decided = false;
   inbox: Message[] = [];
 
   constructor(id: number) {
     this.id = id;
+  }
+
+  reset(): void {
+    this.visited = false;
+    this.parent = null;
+    this.children = [];
+    this.pending.clear();
+    this.decided = false;
   }
 }
