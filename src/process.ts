@@ -11,4 +11,11 @@ export class DProc {
   constructor(id: number) {
     this.id = id;
   }
+
+  reset(): void {
+    this.visited = false;
+    this.parent = null;
+    this.used.clear();
+    this.inbox.length = 0;
+  }
 }
