@@ -13,4 +13,11 @@ export class SProc {
     this.id = id;
     this.uid = uid;
   }
+
+  reset(): void {
+    this.knownMax = null;
+    this.sentSat = false;
+    this.recv.clear();
+    this.inbox.length = 0;
+  }
 }
