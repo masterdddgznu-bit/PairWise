@@ -1,5 +1,8 @@
 import type { VirtualClock } from "./clock.js";
 import type { WaitStatus } from "./types.js";
+import { MemberRegistry } from "./membership.js";
+import { WaitRegistry } from "./epochs.js";
+import { StaleFenceError } from "./errors.js";
 
 /** Simple countdown barrier (base mode). */
 export class Barrier {
@@ -31,51 +34,64 @@ export class Barrier {
 
 /** Distributed epoch barrier with membership fence. */
 export class EpochBarrier {
-  fence = 0;
+  private readonly registry: MemberRegistry;
+  private readonly waits: WaitRegistry;
 
-  constructor(_clock: VirtualClock, _members: string[]) {}
-
-  propose(_nodeId: string, _nextEpoch: number): void {
-    throw new Error("propose not implemented");
+  constructor(clock: VirtualClock, initialMembers: string[]) {
+    this.registry = new MemberRegistry(initialMembers);
+    this.waits = new WaitRegistry(clock);
   }
 
-  ack(_nodeId: string, _epoch: number): void {
-    throw new Error("ack not implemented");
+  get fence(): number {
+    return this.registry.fence;
   }
 
-  advance(_nodeId: string, _fence: number): number {
-    throw new Error("advance not implemented");
+  propose(nodeId: string, nextEpoch: number): void {
+    this.registry.propose(nodeId, nextEpoch);
   }
 
-  wait(_epoch: number): WaitStatus {
-    throw new Error("wait not implemented");
+  ack(nodeId: string, epoch: number): void {
+    this.registry.ack(nodeId, epoch);
   }
 
-  waitUntil(_epoch: number, _deadlineMs: number): void {
-    throw new Error("waitUntil not implemented");
+  advance(nodeId: string, fence: number): number {
+    if (fence !== this.registry.fence) {
+      throw new StaleFenceError(
+        `fence ${fence} is stale; current fence is ${this.registry.fence}`,
+      );
+    }
+    return this.registry.advance(nodeId);
+  }
+
+  wait(epoch: number): WaitStatus {
+    return this.waits.status(epoch, this.registry.allAtLeast(epoch));
+  }
+
+  waitUntil(epoch: number, deadlineMs: number): void {
+    this.waits.register(epoch, deadlineMs);
   }
 
   tick(): void {
-    throw new Error("tick not implemented");
+    this.waits.tick();
   }
 
-  join(_nodeId: string, _atEpoch: number): void {
-    throw new Error("join not implemented");
+  join(nodeId: string, atEpoch: number): void {
+    this.registry.join(nodeId, atEpoch);
   }
 
-  leave(_nodeId: string): void {
-    throw new Error("leave not implemented");
+  leave(nodeId: string): void {
+    this.registry.leave(nodeId);
   }
 
   minEpoch(): number {
-    throw new Error("minEpoch not implemented");
+    return this.registry.minEpoch();
   }
 
-  epochOf(_nodeId: string): number {
-    throw new Error("epochOf not implemented");
+  epochOf(nodeId: string): number {
+    return this.registry.epochOf(nodeId);
   }
 
   members(): string[] {
-    throw new Error("members not implemented");
+    return this.registry.sortedMembers();
   }
 }
