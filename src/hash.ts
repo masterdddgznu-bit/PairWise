@@ -1,8 +1,19 @@
-/** FNV-1a 32-bit and MinHash hash family — starter stub. */
-export function fnv1a32(_key: string, _seed = 0): number {
-  throw new Error("fnv1a32 not implemented");
+/** FNV-1a 32-bit and MinHash hash family. */
+const FNV_OFFSET = 2166136261;
+const FNV_PRIME = 16777619;
+const SEED_MIX = 0x9e3779b9;
+
+export function fnv1a32(key: string, seed = 0): number {
+  let h = (FNV_OFFSET ^ seed) >>> 0;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, FNV_PRIME);
+  }
+  return h >>> 0;
 }
 
-export function hashAt(_key: string, _index: number, _seed: number): number {
-  throw new Error("hashAt not implemented");
+export function hashAt(key: string, index: number, seed: number): number {
+  const h0 = fnv1a32(key, seed);
+  const h1 = fnv1a32(key, (seed ^ SEED_MIX) >>> 0);
+  return (h0 + Math.imul(index, h1)) >>> 0;
 }
