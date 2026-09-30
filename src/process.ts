@@ -5,6 +5,7 @@ export class DProc {
   online = true;
   visited = false;
   parent: number | null = null;
+  decided = false;
   used = new Set<number>();
   inbox: Message[] = [];
 
