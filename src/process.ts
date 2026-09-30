@@ -11,4 +11,12 @@ export class AProc {
   constructor(id: number) {
     this.id = id;
   }
+
+  reset(): void {
+    this.online = true;
+    this.pulse = 0;
+    this.emitted = false;
+    this.recv.clear();
+    this.inbox = [];
+  }
 }
