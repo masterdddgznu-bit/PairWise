@@ -10,4 +10,18 @@ export class BProc {
   constructor(id: number) {
     this.id = id;
   }
+
+  reset(): void {
+    this.dist = null;
+    this.parent = null;
+    this.inbox = [];
+  }
+
+  enqueue(message: Message): void {
+    this.inbox.push(message);
+  }
+
+  dequeue(): Message | undefined {
+    return this.inbox.shift();
+  }
 }
