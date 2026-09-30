@@ -1,6 +1,15 @@
 import type { GKTuple } from "./types.js";
 
-/** GK compress — starter stub. */
-export function compressTuples(_tuples: GKTuple[], _epsilon: number, _count: number): GKTuple[] {
-  throw new Error("compressTuples not implemented");
+/** GK compress: scan right-to-left, never merge head/tail tuples. */
+export function compressTuples(tuples: GKTuple[], epsilon: number, count: number): GKTuple[] {
+  const threshold = 2 * epsilon * count;
+  for (let i = tuples.length - 2; i >= 1; i -= 1) {
+    const current = tuples[i]!;
+    const next = tuples[i + 1]!;
+    if (current.g + next.g + next.delta < threshold) {
+      next.g += current.g;
+      tuples.splice(i, 1);
+    }
+  }
+  return tuples;
 }
