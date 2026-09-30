@@ -4,6 +4,7 @@ export class FProc {
   readonly id: number;
   readonly uid: number;
   online = true;
+  done = false;
   maxKnown: number;
   inbox: Message[] = [];
 
