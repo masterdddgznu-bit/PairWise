@@ -1,12 +1,22 @@
-/** Fingerprint derivation — starter stub. */
-export function fingerprintOf(_key: string, _fingerprintBits: number): number {
-  throw new Error("fingerprintOf not implemented");
+import { fnv1a32 } from "./hash.js";
+
+/**
+ * Fingerprint = high `fingerprintBits` of the key hash, masked.
+ * Never zero (zero denotes an empty slot); coerced to 1.
+ */
+export function fingerprintOf(key: string, fingerprintBits: number): number {
+  const h = fnv1a32(key);
+  const mask = (1 << fingerprintBits) - 1;
+  const fp = (h >>> (32 - fingerprintBits)) & mask;
+  return fp === 0 ? 1 : fp;
 }
 
-export function altBucket(_index: number, _fp: number, _bucketCount: number): number {
-  throw new Error("altBucket not implemented");
+/** Primary bucket i1 = hash(key) mod bucketCount. */
+export function primaryBucket(key: string, bucketCount: number): number {
+  return fnv1a32(key) % bucketCount;
 }
 
-export function primaryBucket(_key: string, _bucketCount: number): number {
-  throw new Error("primaryBucket not implemented");
+/** Alternate bucket via xor; involution: alt(alt(i, f), f) === i. */
+export function altBucket(index: number, fp: number, bucketCount: number): number {
+  return index ^ (fnv1a32(String(fp)) % bucketCount);
 }
