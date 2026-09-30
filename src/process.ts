@@ -7,8 +7,17 @@ export class TProc {
   parent: number | null = null;
   used = new Set<number>();
   inbox: Message[] = [];
+  decided = false;
 
   constructor(id: number) {
     this.id = id;
+  }
+
+  reset(): void {
+    this.visited = false;
+    this.parent = null;
+    this.used.clear();
+    this.inbox = [];
+    this.decided = false;
   }
 }
