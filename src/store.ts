@@ -1,74 +1,75 @@
 import type { DedupEntry } from "./types.js";
 import { isExpired } from "./entry.js";
 
-/**
- * Dedup storage — per-tenant maps plus active index.
- * NOTE: id keys are global in this partial build.
- */
+/** Per-tenant dedup maps — ids isolated by tenant. */
 export class DedupStore {
-  private global = new Map<string, DedupEntry>();
-  private activeIndex = new Set<string>();
-  private tenantMarkers = new Set<string>();
+  private byTenant = new Map<string, Map<string, DedupEntry>>();
 
-  private idxKey(tenant: string, id: string): string {
-    return `${tenant}\0${id}`;
-  }
-
-  private storageKey(_tenant: string, id: string): string {
-    return id;
+  private bucket(tenant: string): Map<string, DedupEntry> {
+    let m = this.byTenant.get(tenant);
+    if (!m) {
+      m = new Map();
+      this.byTenant.set(tenant, m);
+    }
+    return m;
   }
 
   get(tenant: string, id: string): DedupEntry | undefined {
-    const entry = this.global.get(this.storageKey(tenant, id));
+    const entry = this.bucket(tenant).get(id);
     if (!entry) return undefined;
     return { ...entry };
   }
 
   set(entry: DedupEntry): void {
-    this.tenantMarkers.add(entry.tenant);
-    this.global.set(this.storageKey(entry.tenant, entry.id), { ...entry });
-    this.activeIndex.add(this.idxKey(entry.tenant, entry.id));
+    this.bucket(entry.tenant).set(entry.id, { ...entry });
   }
 
   delete(tenant: string, id: string): void {
-    this.global.delete(this.storageKey(tenant, id));
-    this.activeIndex.delete(this.idxKey(tenant, id));
-  }
-
-  hasIndex(tenant: string, id: string): boolean {
-    return this.activeIndex.has(this.idxKey(tenant, id));
+    this.bucket(tenant).delete(id);
   }
 
   gc(now: number, ttlMs: number): void {
-    for (const [key, entry] of this.global) {
-      if (isExpired(entry, now, ttlMs)) {
-        this.global.delete(key);
+    for (const [tenant, map] of this.byTenant) {
+      for (const [id, entry] of map) {
+        if (isExpired(entry, now, ttlMs)) {
+          map.delete(id);
+        }
+      }
+      if (map.size === 0) {
+        this.byTenant.delete(tenant);
       }
     }
   }
 
   clearTenant(tenant: string): void {
-    this.tenantMarkers.delete(tenant);
+    this.byTenant.delete(tenant);
   }
 
   all(): DedupEntry[] {
-    return [...this.global.values()].map((e) => ({ ...e }));
+    const out: DedupEntry[] = [];
+    for (const map of this.byTenant.values()) {
+      for (const e of map.values()) out.push({ ...e });
+    }
+    return out;
   }
 
   replaceAll(entries: DedupEntry[]): void {
-    this.global.clear();
-    this.activeIndex.clear();
-    this.tenantMarkers.clear();
+    this.byTenant.clear();
     for (const e of entries) {
       this.set(e);
     }
   }
 
-  rawSize(): number {
-    return this.global.size;
-  }
-
-  countForTenant(_tenant: string): number {
-    return this.global.size;
+  countActive(now: number, ttlMs: number, tenant?: string): number {
+    let n = 0;
+    const tenants = tenant ? [tenant] : [...this.byTenant.keys()];
+    for (const t of tenants) {
+      const map = this.byTenant.get(t);
+      if (!map) continue;
+      for (const entry of map.values()) {
+        if (!isExpired(entry, now, ttlMs)) n++;
+      }
+    }
+    return n;
   }
 }

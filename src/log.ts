@@ -1,7 +1,7 @@
 import type { VirtualClock } from "./clock.js";
 import type { DedupSnapshot } from "./types.js";
 import { DedupStore } from "./store.js";
-import { isActive } from "./entry.js";
+import { isActive, isExpired } from "./entry.js";
 import { exportSnapshot, importSnapshot } from "./recover.js";
 
 export type DedupLogOptions = {
@@ -16,11 +16,15 @@ export class DedupLog {
     private readonly opts: DedupLogOptions,
   ) {}
 
+  private touchGc(): void {
+    this.store.gc(this.clock.now(), this.opts.ttlMs);
+  }
+
   accept(tenant: string, id: string): boolean {
+    this.touchGc();
     const now = this.clock.now();
     const existing = this.store.get(tenant, id);
     if (existing && isActive(existing, now, this.opts.ttlMs)) {
-      this.store.set({ tenant, id, seenAt: now });
       return false;
     }
     this.store.set({ tenant, id, seenAt: now });
@@ -28,12 +32,18 @@ export class DedupLog {
   }
 
   has(tenant: string, id: string): boolean {
-    return this.store.hasIndex(tenant, id);
+    this.touchGc();
+    const existing = this.store.get(tenant, id);
+    if (!existing) return false;
+    return isActive(existing, this.clock.now(), this.opts.ttlMs);
   }
 
   seenAt(tenant: string, id: string): number | undefined {
+    this.touchGc();
     const existing = this.store.get(tenant, id);
     if (!existing) return undefined;
+    const now = this.clock.now();
+    if (isExpired(existing, now, this.opts.ttlMs)) return undefined;
     return existing.seenAt;
   }
 
@@ -46,10 +56,8 @@ export class DedupLog {
   }
 
   size(tenant?: string): number {
-    if (tenant) {
-      return this.store.countForTenant(tenant);
-    }
-    return this.store.rawSize();
+    this.touchGc();
+    return this.store.countActive(this.clock.now(), this.opts.ttlMs, tenant);
   }
 
   exportState(): DedupSnapshot {

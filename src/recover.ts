@@ -10,14 +10,9 @@ export function exportSnapshot(store: DedupStore): DedupSnapshot {
 export function importSnapshot(
   store: DedupStore,
   clock: VirtualClock,
-  _ttlMs: number,
+  ttlMs: number,
   snapshot: DedupSnapshot,
 ): void {
-  const now = clock.now();
-  const entries = (snapshot.entries ?? []).map((e) => ({
-    tenant: e.tenant,
-    id: e.id,
-    seenAt: now,
-  }));
-  store.replaceAll(entries);
+  store.replaceAll(snapshot.entries ?? []);
+  store.gc(clock.now(), ttlMs);
 }

@@ -6,7 +6,7 @@ export function expiryAt(entry: DedupEntry, ttlMs: number): number {
 }
 
 export function isExpired(entry: DedupEntry, now: number, ttlMs: number): boolean {
-  return now > expiryAt(entry, ttlMs);
+  return now >= expiryAt(entry, ttlMs);
 }
 
 export function isActive(entry: DedupEntry, now: number, ttlMs: number): boolean {
