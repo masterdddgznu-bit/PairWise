@@ -1,7 +1,14 @@
-/** Prune entries with f+delta <= bucket — starter stub. */
+/** Prune entries with f+delta <= bucket. Returns number removed. */
 export function pruneEntries(
-  _entries: Map<string, { f: number; delta: number }>,
-  _bucket: number,
+  entries: Map<string, { f: number; delta: number }>,
+  bucket: number,
 ): number {
-  throw new Error("pruneEntries not implemented");
+  let removed = 0;
+  for (const [key, entry] of entries) {
+    if (entry.f + entry.delta <= bucket) {
+      entries.delete(key);
+      removed += 1;
+    }
+  }
+  return removed;
 }

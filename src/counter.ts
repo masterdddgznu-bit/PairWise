@@ -1,61 +1,141 @@
 import { LossyError } from "./errors.js";
+import { pruneEntries } from "./prune.js";
 import type { LossyEntry, LossyStats } from "./types.js";
 
-/** Lossy Counting frequent-item sketch — starter stub. */
+/** Lossy Counting frequent-item sketch. */
 export class LossyCounter {
-  constructor(_epsilon: number) {
-    /* params accepted; methods throw until implemented */
+  private readonly epsilon: number;
+  private readonly w: number;
+  private N = 0;
+  private b = 0;
+  private readonly entries = new Map<string, { f: number; delta: number }>();
+  private frozen = false;
+
+  constructor(epsilon: number) {
+    if (
+      typeof epsilon !== "number" ||
+      !Number.isFinite(epsilon) ||
+      epsilon <= 0 ||
+      epsilon > 0.5
+    ) {
+      throw new LossyError("epsilon must be in (0, 0.5]");
+    }
+    this.epsilon = epsilon;
+    this.w = Math.floor(1 / epsilon);
   }
 
-  add(_key: string): void {
-    throw new Error("add not implemented");
+  add(key: string): void {
+    this.assertMutable();
+    this.N += 1;
+    this.b = Math.ceil(this.N / this.w);
+    const existing = this.entries.get(key);
+    if (existing) {
+      existing.f += 1;
+    } else {
+      this.entries.set(key, { f: 1, delta: this.b - 1 });
+    }
+    if (this.N % this.w === 0) {
+      pruneEntries(this.entries, this.b);
+    }
   }
 
-  estimate(_key: string): number {
-    throw new Error("estimate not implemented");
+  estimate(key: string): number {
+    return this.entries.get(key)?.f ?? 0;
   }
 
-  upperBound(_key: string): number {
-    throw new Error("upperBound not implemented");
+  upperBound(key: string): number {
+    const entry = this.entries.get(key);
+    return entry ? entry.f + entry.delta : 0;
   }
 
-  mightFrequent(_key: string, _support: number): boolean {
-    throw new Error("mightFrequent not implemented");
+  mightFrequent(key: string, support: number): boolean {
+    if (
+      typeof support !== "number" ||
+      !Number.isFinite(support) ||
+      support <= 0 ||
+      support > 1
+    ) {
+      throw new LossyError("support must be in (0, 1]");
+    }
+    if (this.N === 0) return false;
+    return this.estimate(key) / this.N >= support - this.epsilon;
   }
 
-  merge(_other: LossyCounter): void {
-    throw new Error("merge not implemented");
+  merge(other: LossyCounter): void {
+    this.assertMutable();
+    if (!(other instanceof LossyCounter)) {
+      throw new LossyError("merge target must be a LossyCounter");
+    }
+    if (other.epsilon !== this.epsilon) {
+      throw new LossyError("cannot merge counters with different epsilon");
+    }
+    for (const [key, entry] of other.entries) {
+      const existing = this.entries.get(key);
+      if (existing) {
+        existing.f += entry.f;
+        existing.delta = Math.max(existing.delta, entry.delta);
+      } else {
+        this.entries.set(key, { f: entry.f, delta: entry.delta });
+      }
+    }
+    this.N += other.N;
+    this.b = Math.ceil(this.N / this.w);
+    pruneEntries(this.entries, this.b);
   }
 
   exportEntries(): LossyEntry[] {
-    throw new Error("exportEntries not implemented");
+    return [...this.entries.entries()]
+      .map(([key, entry]) => ({ key, f: entry.f, delta: entry.delta }))
+      .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   }
 
   static fromEntries(
-    _epsilon: number,
-    _N: number,
-    _entries: LossyEntry[],
+    epsilon: number,
+    N: number,
+    entries: LossyEntry[],
   ): LossyCounter {
-    throw new Error("fromEntries not implemented");
+    if (!Number.isInteger(N) || N < 0) {
+      throw new LossyError("N must be a non-negative integer");
+    }
+    const counter = new LossyCounter(epsilon);
+    counter.N = N;
+    counter.b = Math.ceil(N / counter.w);
+    for (const entry of entries) {
+      counter.entries.set(entry.key, { f: entry.f, delta: entry.delta });
+    }
+    return counter;
   }
 
   countStream(): number {
-    throw new Error("countStream not implemented");
+    return this.N;
   }
 
   bucket(): number {
-    throw new Error("bucket not implemented");
+    return this.b;
   }
 
   size(): number {
-    throw new Error("size not implemented");
+    return this.entries.size;
   }
 
   freeze(): void {
-    throw new Error("freeze not implemented");
+    this.frozen = true;
   }
 
   stats(): LossyStats {
-    throw new Error("stats not implemented");
+    return {
+      epsilon: this.epsilon,
+      w: this.w,
+      N: this.N,
+      bucket: this.b,
+      size: this.entries.size,
+      frozen: this.frozen,
+    };
+  }
+
+  private assertMutable(): void {
+    if (this.frozen) {
+      throw new LossyError("counter is frozen");
+    }
   }
 }
