@@ -1,12 +1,22 @@
-/** Bit helpers for SimHash — starter stub. */
-export function bitAt(_value: number, _index: number): boolean {
-  throw new Error("bitAt not implemented");
+/** Bit helpers for SimHash. */
+export function bitAt(value: number, index: number): boolean {
+  return ((value >>> index) & 1) === 1;
 }
 
-export function fingerprintFromAcc(_acc: number[], _bits: number): number {
-  throw new Error("fingerprintFromAcc not implemented");
+export function fingerprintFromAcc(acc: number[], bits: number): number {
+  let fingerprint = 0;
+  for (let i = 0; i < bits; i++) {
+    if (acc[i] > 0) fingerprint |= 1 << i;
+  }
+  return fingerprint >>> 0;
 }
 
-export function hammingDistance(_a: number, _b: number): number {
-  throw new Error("hammingDistance not implemented");
+export function hammingDistance(a: number, b: number): number {
+  let x = (a ^ b) >>> 0;
+  let count = 0;
+  while (x !== 0) {
+    x &= x - 1;
+    count++;
+  }
+  return count;
 }
