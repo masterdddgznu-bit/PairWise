@@ -6,5 +6,6 @@ export class DProc {
   decided = false;
   decision: string | null = null;
   extracted = new Set<string>();
+  forwarded = new Set<string>();
   constructor(id: number) { this.id = id; }
 }
