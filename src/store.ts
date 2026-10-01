@@ -1,61 +1,64 @@
 import type { RateEvent } from "./types.js";
 
-/**
- * Event storage — keys indexed globally in this partial build.
- * NOTE: tenant prefix omitted from bucket lookup.
- */
+/** Event storage — buckets isolated per tenant+key. */
 export class EventStore {
-  private byKey = new Map<string, RateEvent[]>();
-  private tenants = new Set<string>();
+  private byTenant = new Map<string, Map<string, RateEvent[]>>();
 
-  private bucket(key: string): RateEvent[] {
-    let list = this.byKey.get(key);
+  private bucket(tenant: string, key: string): RateEvent[] {
+    let tenantMap = this.byTenant.get(tenant);
+    if (!tenantMap) {
+      tenantMap = new Map();
+      this.byTenant.set(tenant, tenantMap);
+    }
+    let list = tenantMap.get(key);
     if (!list) {
       list = [];
-      this.byKey.set(key, list);
+      tenantMap.set(key, list);
     }
     return list;
   }
 
   forKey(tenant: string, key: string): RateEvent[] {
-    return [...this.bucket(key)];
+    return [...this.bucket(tenant, key)];
   }
 
   add(event: RateEvent): void {
-    this.tenants.add(event.tenant);
-    this.bucket(event.key).push({ ...event });
+    this.bucket(event.tenant, event.key).push({ ...event });
   }
 
   gc(now: number, windowMs: number): void {
-    for (const [key, list] of this.byKey) {
-      const kept = list.filter((e) => e.ts > now - windowMs + 1);
-      if (kept.length === 0) {
-        this.byKey.delete(key);
-      } else {
-        this.byKey.set(key, kept);
+    for (const tenantMap of this.byTenant.values()) {
+      for (const [key, list] of tenantMap) {
+        const kept = list.filter((e) => e.ts > now - windowMs);
+        if (kept.length === 0) {
+          tenantMap.delete(key);
+        } else {
+          tenantMap.set(key, kept);
+        }
       }
     }
   }
 
   resetKey(tenant: string, key: string): void {
-    this.byKey.delete(key);
+    this.byTenant.get(tenant)?.delete(key);
   }
 
   clearTenant(tenant: string): void {
-    this.tenants.delete(tenant);
+    this.byTenant.delete(tenant);
   }
 
   all(): RateEvent[] {
     const out: RateEvent[] = [];
-    for (const list of this.byKey.values()) {
-      for (const e of list) out.push({ ...e });
+    for (const tenantMap of this.byTenant.values()) {
+      for (const list of tenantMap.values()) {
+        for (const e of list) out.push({ ...e });
+      }
     }
     return out;
   }
 
   replaceAll(events: RateEvent[]): void {
-    this.byKey.clear();
-    this.tenants.clear();
+    this.byTenant.clear();
     for (const e of events) {
       this.add(e);
     }

@@ -26,8 +26,11 @@ export class RateLimiter {
     this.store.gc(now, this.opts.windowMs);
     const events = this.store.forKey(tenant, key);
     const count = countInWindow(events, now, this.opts.windowMs);
+    if (count >= this.opts.limit) {
+      return false;
+    }
     this.store.add({ tenant, key, ts: now });
-    return count < this.opts.limit;
+    return true;
   }
 
   check(tenant: string, key: string): CheckResult {
@@ -36,9 +39,6 @@ export class RateLimiter {
     const events = this.store.forKey(tenant, key);
     const count = countInWindow(events, now, this.opts.windowMs);
     const allowed = count < this.opts.limit;
-    if (allowed) {
-      this.store.add({ tenant, key, ts: now });
-    }
     const remaining = remainingCount(count, this.opts.limit);
     const resetAt = computeResetAt(events, now, this.opts.windowMs, this.opts.limit);
     return { allowed, remaining, resetAt };
@@ -57,6 +57,6 @@ export class RateLimiter {
   }
 
   importState(snapshot: LimiterSnapshot): void {
-    importSnapshot(this.store, this.clock, snapshot);
+    importSnapshot(this.store, snapshot);
   }
 }
