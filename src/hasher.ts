@@ -1,57 +1,90 @@
 import { JumpError } from "./errors.js";
+import { fnv1a32 } from "./hash.js";
+import { jumpConsistentHash } from "./jump.js";
 import type { JumpState, JumpStats } from "./types.js";
 
-/** Jump consistent hash — starter stub. */
+/** Jump consistent hash hasher. */
 export class JumpHash {
-  constructor(_numBuckets: number, _seed: number) {
-    /* params accepted; methods throw until implemented */
+  private n: number;
+  private readonly seedValue: number;
+  private frozen = false;
+
+  constructor(numBuckets: number, seed: number) {
+    if (!Number.isInteger(numBuckets) || numBuckets < 1) {
+      throw new JumpError("invalid numBuckets");
+    }
+    this.n = numBuckets;
+    this.seedValue = seed;
   }
 
-  keyToUint64(_key: string): bigint {
-    throw new Error("keyToUint64 not implemented");
+  keyToUint64(key: string): bigint {
+    const lo = fnv1a32(key, this.seedValue);
+    const hi = fnv1a32(key, (this.seedValue + 1) >>> 0);
+    return (BigInt(hi) << 32n) | BigInt(lo);
   }
 
-  assign(_key: string): number {
-    throw new Error("assign not implemented");
+  assign(key: string): number {
+    return jumpConsistentHash(this.keyToUint64(key), this.n);
   }
 
-  setNumBuckets(_n: number): void {
-    throw new Error("setNumBuckets not implemented");
+  setNumBuckets(n: number): void {
+    if (this.frozen) {
+      throw new JumpError("hasher is frozen");
+    }
+    if (!Number.isInteger(n) || n < 1) {
+      throw new JumpError("invalid numBuckets");
+    }
+    this.n = n;
   }
 
   numBuckets(): number {
-    throw new Error("numBuckets not implemented");
+    return this.n;
   }
 
   seed(): number {
-    throw new Error("seed not implemented");
+    return this.seedValue;
   }
 
-  assignMany(_keys: string[]): number[] {
-    throw new Error("assignMany not implemented");
+  assignMany(keys: string[]): number[] {
+    return keys.map((key) => this.assign(key));
   }
 
-  distribution(_keys: string[]): number[] {
-    throw new Error("distribution not implemented");
+  distribution(keys: string[]): number[] {
+    const counts = new Array<number>(this.n).fill(0);
+    for (const key of keys) {
+      counts[this.assign(key)] += 1;
+    }
+    return counts;
   }
 
-  movedKeys(_keys: string[], _newNumBuckets: number): string[] {
-    throw new Error("movedKeys not implemented");
+  movedKeys(keys: string[], newNumBuckets: number): string[] {
+    if (!Number.isInteger(newNumBuckets) || newNumBuckets < 1) {
+      throw new JumpError("invalid numBuckets");
+    }
+    const moved: string[] = [];
+    for (const key of keys) {
+      const before = jumpConsistentHash(this.keyToUint64(key), this.n);
+      const after = jumpConsistentHash(this.keyToUint64(key), newNumBuckets);
+      if (before !== after) {
+        moved.push(key);
+      }
+    }
+    return moved.sort();
   }
 
   exportState(): JumpState {
-    throw new Error("exportState not implemented");
+    return { numBuckets: this.n, seed: this.seedValue };
   }
 
-  static fromState(_state: JumpState): JumpHash {
-    throw new Error("fromState not implemented");
+  static fromState(state: JumpState): JumpHash {
+    return new JumpHash(state.numBuckets, state.seed);
   }
 
   freeze(): void {
-    throw new Error("freeze not implemented");
+    this.frozen = true;
   }
 
   stats(): JumpStats {
-    throw new Error("stats not implemented");
+    return { numBuckets: this.n, seed: this.seedValue, frozen: this.frozen };
   }
 }
