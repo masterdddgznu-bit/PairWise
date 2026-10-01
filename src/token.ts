@@ -33,7 +33,8 @@ export class TokenGenerator {
 
   importCounters(data: Record<string, number>): void {
     for (const [k, v] of Object.entries(data)) {
-      this.counters.set(k, v);
+      const cur = this.counters.get(k) ?? 0;
+      if (v > cur) this.counters.set(k, v);
     }
   }
 

@@ -2,7 +2,7 @@ import type { LeaseRecord } from "./types.js";
 
 /** Lease helpers — expiry boundary drives steal vs held. */
 export function isExpired(lease: LeaseRecord, now: number): boolean {
-  return now > lease.expiry;
+  return now >= lease.expiry;
 }
 
 export function isActive(lease: LeaseRecord, now: number): boolean {

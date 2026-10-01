@@ -32,17 +32,10 @@ export class FencePool {
         this.store.set({ tenant, resource, token: existing.token, expiry });
         return { token: existing.token, expiry };
       }
+      throw new LeaseHeldError();
     }
 
-    if (existing && isActive(existing, now)) {
-      const token = existing.token;
-      const expiry = now + ttlMs;
-      this.store.set({ tenant, resource, token, expiry });
-      return { token, expiry };
-    }
-
-    const token =
-      existing && isExpired(existing, now) ? existing.token : this.tokens.next(tenant, resource);
+    const token = this.tokens.next(tenant, resource);
     const expiry = now + ttlMs;
     this.store.set({ tenant, resource, token, expiry });
     return { token, expiry };
@@ -57,13 +50,16 @@ export class FencePool {
     if (existing.token !== token) {
       throw new StaleTokenError();
     }
-    const expiry = existing.expiry + ttlMs;
+    const expiry = now + ttlMs;
     this.store.set({ tenant, resource, token, expiry });
   }
 
-  release(tenant: string, resource: string, _token: number): void {
+  release(tenant: string, resource: string, token: number): void {
     const existing = this.store.get(tenant, resource);
     if (!existing) return;
+    if (existing.token !== token) {
+      throw new StaleTokenError();
+    }
     this.store.delete(tenant, resource);
   }
 
