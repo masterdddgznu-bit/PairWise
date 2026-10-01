@@ -1,9 +1,13 @@
-/** Integer rendezvous score — starter stub. */
+import { fnv32ForNode } from "./hash.js";
+
+/** Integer rendezvous score (BigInt, no float drift). */
 export function rendezvousScore(
-  _seed: number,
-  _key: string,
-  _nodeId: string,
-  _weight: number,
+  seed: number,
+  key: string,
+  nodeId: string,
+  weight: number,
 ): bigint {
-  throw new Error("rendezvousScore not implemented");
+  const h = fnv32ForNode(seed, key, nodeId);
+  const wMilli = BigInt(Math.floor(weight * 1000));
+  return BigInt(h) * wMilli;
 }
