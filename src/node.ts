@@ -1,8 +1,14 @@
-/** Skip list node — starter stub. */
+/** Skip list node: key, value, and per-level forward pointers. */
 export class SkipNode {
-  forward: unknown[] = [];
+  readonly key: string;
+  value: number;
+  readonly level: number;
+  forward: (SkipNode | null)[];
 
-  constructor(_key: string, _value: number, _level: number) {
-    /* params accepted */
+  constructor(key: string, value: number, level: number) {
+    this.key = key;
+    this.value = value;
+    this.level = level;
+    this.forward = new Array<SkipNode | null>(level).fill(null);
   }
 }
