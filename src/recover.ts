@@ -1,6 +1,8 @@
 import type { DedupSnapshot } from "./types.js";
 import type { DedupStore } from "./store.js";
 import type { VirtualClock } from "./clock.js";
+import { isActive } from "./entry.js";
+import { InvalidSnapshotError } from "./errors.js";
 
 export function exportSnapshot(store: DedupStore): DedupSnapshot {
   return { entries: store.all() };
@@ -10,14 +12,19 @@ export function exportSnapshot(store: DedupStore): DedupSnapshot {
 export function importSnapshot(
   store: DedupStore,
   clock: VirtualClock,
-  _ttlMs: number,
+  ttlMs: number,
   snapshot: DedupSnapshot,
 ): void {
+  if (!snapshot || !Array.isArray(snapshot.entries)) {
+    throw new InvalidSnapshotError();
+  }
   const now = clock.now();
-  const entries = (snapshot.entries ?? []).map((e) => ({
-    tenant: e.tenant,
-    id: e.id,
-    seenAt: now,
-  }));
+  const entries = snapshot.entries
+    .filter((e) => isActive(e, now, ttlMs))
+    .map((e) => ({
+      tenant: e.tenant,
+      id: e.id,
+      seenAt: e.seenAt,
+    }));
   store.replaceAll(entries);
 }

@@ -1,7 +1,6 @@
 import type { VirtualClock } from "./clock.js";
 import type { DedupSnapshot } from "./types.js";
 import { DedupStore } from "./store.js";
-import { isActive } from "./entry.js";
 import { exportSnapshot, importSnapshot } from "./recover.js";
 
 export type DedupLogOptions = {
@@ -18,9 +17,9 @@ export class DedupLog {
 
   accept(tenant: string, id: string): boolean {
     const now = this.clock.now();
+    this.store.gc(now, this.opts.ttlMs);
     const existing = this.store.get(tenant, id);
-    if (existing && isActive(existing, now, this.opts.ttlMs)) {
-      this.store.set({ tenant, id, seenAt: now });
+    if (existing) {
       return false;
     }
     this.store.set({ tenant, id, seenAt: now });
@@ -28,10 +27,12 @@ export class DedupLog {
   }
 
   has(tenant: string, id: string): boolean {
-    return this.store.hasIndex(tenant, id);
+    this.store.gc(this.clock.now(), this.opts.ttlMs);
+    return this.store.get(tenant, id) !== undefined;
   }
 
   seenAt(tenant: string, id: string): number | undefined {
+    this.store.gc(this.clock.now(), this.opts.ttlMs);
     const existing = this.store.get(tenant, id);
     if (!existing) return undefined;
     return existing.seenAt;
@@ -46,7 +47,8 @@ export class DedupLog {
   }
 
   size(tenant?: string): number {
-    if (tenant) {
+    this.store.gc(this.clock.now(), this.opts.ttlMs);
+    if (tenant !== undefined) {
       return this.store.countForTenant(tenant);
     }
     return this.store.rawSize();
