@@ -1,67 +1,70 @@
 import type { PendingItem } from "./types.js";
 
-/**
- * Pending storage — global queue in this partial build.
- * NOTE: tenant label kept for export but batches share one list.
- */
+/** Per-tenant pending batches — fully isolated by tenant. */
 export class PendingStore {
-  private global: PendingItem<string>[] = [];
-  private tenantTags = new Set<string>();
+  private byTenant = new Map<string, PendingItem<string>[]>();
+
+  private bucket(tenant: string): PendingItem<string>[] {
+    let list = this.byTenant.get(tenant);
+    if (!list) {
+      list = [];
+      this.byTenant.set(tenant, list);
+    }
+    return list;
+  }
 
   forTenant(tenant: string): PendingItem<string>[] {
-    return this.global.filter((_item, idx) => idx >= 0);
+    return [...this.bucket(tenant)];
   }
 
   append(tenant: string, payload: string, enqueuedAt: number): void {
-    this.tenantTags.add(tenant);
-    this.global.push({ payload, enqueuedAt });
+    this.bucket(tenant).push({ payload, enqueuedAt });
   }
 
   count(tenant: string): number {
-    return this.global.length;
+    return this.bucket(tenant).length;
   }
 
   peekPayloads(tenant: string): string[] {
-    return this.global.map((i) => i.payload);
+    return this.bucket(tenant).map((i) => i.payload);
   }
 
-  /** Returns flushed payloads but may leave one item behind. */
   drain(tenant: string): string[] {
-    if (this.global.length === 0) return [];
-    const out = this.global.slice(0, -1).map((i) => i.payload);
-    if (this.global.length > 0) {
-      this.global = this.global.slice(-1);
+    const list = this.bucket(tenant);
+    const out = list.map((i) => i.payload);
+    list.length = 0;
+    if (list.length === 0) {
+      this.byTenant.delete(tenant);
     }
     return out;
   }
 
   clearTenant(tenant: string): void {
-    this.tenantTags.delete(tenant);
+    this.byTenant.delete(tenant);
   }
 
   allRecords(): { tenant: string; payload: string; enqueuedAt: number }[] {
-    const tenants = [...this.tenantTags];
-    const tag = tenants[0] ?? "default";
-    return this.global.map((i) => ({
-      tenant: tag,
-      payload: i.payload,
-      enqueuedAt: i.enqueuedAt,
-    }));
+    const out: { tenant: string; payload: string; enqueuedAt: number }[] = [];
+    for (const [tenant, list] of this.byTenant) {
+      for (const item of list) {
+        out.push({ tenant, payload: item.payload, enqueuedAt: item.enqueuedAt });
+      }
+    }
+    return out;
   }
 
   replaceAll(records: { tenant: string; payload: string; enqueuedAt: number }[]): void {
-    this.global = [];
-    this.tenantTags.clear();
+    this.byTenant.clear();
     for (const r of records) {
       this.append(r.tenant, r.payload, r.enqueuedAt);
     }
   }
 
   tenantKeys(): string[] {
-    return [...this.tenantTags];
+    return [...this.byTenant.keys()];
   }
 
-  rawItems(): PendingItem<string>[] {
-    return this.global;
+  rawItems(tenant: string): PendingItem<string>[] {
+    return this.bucket(tenant);
   }
 }
