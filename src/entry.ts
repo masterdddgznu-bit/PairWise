@@ -4,7 +4,7 @@ export function computeExpiresAt(now: number, ttlMs: number): number {
 }
 
 export function isExpired(expiresAt: number, now: number): boolean {
-  return now > expiresAt;
+  return now >= expiresAt;
 }
 
 export function isLive(expiresAt: number, now: number): boolean {
