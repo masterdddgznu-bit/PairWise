@@ -11,7 +11,7 @@ export function fnv1a32(data: string, seed = 0): number {
   return h >>> 0;
 }
 
-/** Seed-first FNV wrapper — starter stub. */
-export function fnv32(_seed: number, _data: string): number {
-  throw new Error("fnv32 not implemented");
+/** Seed-first FNV wrapper — equivalent to fnv1a32(data, seed). */
+export function fnv32(seed: number, data: string): number {
+  return fnv1a32(data, seed);
 }
