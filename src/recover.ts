@@ -1,6 +1,6 @@
 import type { LimiterSnapshot } from "./types.js";
 import type { EventStore } from "./store.js";
-import type { VirtualClock } from "./clock.js";
+import { InvalidSnapshotError } from "./errors.js";
 
 export function exportSnapshot(store: EventStore): LimiterSnapshot {
   return { events: store.all() };
@@ -9,14 +9,23 @@ export function exportSnapshot(store: EventStore): LimiterSnapshot {
 /** Restore limiter from crash snapshot. */
 export function importSnapshot(
   store: EventStore,
-  clock: VirtualClock,
   snapshot: LimiterSnapshot,
 ): void {
-  const now = clock.now();
-  const events = (snapshot.events ?? []).map((e) => ({
-    tenant: e.tenant,
-    key: e.key,
-    ts: now,
-  }));
+  if (!snapshot || typeof snapshot !== "object" || !Array.isArray(snapshot.events)) {
+    throw new InvalidSnapshotError();
+  }
+  const events = snapshot.events.map((e) => {
+    if (
+      !e ||
+      typeof e !== "object" ||
+      typeof e.tenant !== "string" ||
+      typeof e.key !== "string" ||
+      typeof e.ts !== "number" ||
+      !Number.isFinite(e.ts)
+    ) {
+      throw new InvalidSnapshotError();
+    }
+    return { tenant: e.tenant, key: e.key, ts: e.ts };
+  });
   store.replaceAll(events);
 }

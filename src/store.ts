@@ -1,48 +1,60 @@
 import type { RateEvent } from "./types.js";
 
-/**
- * Event storage — keys indexed globally in this partial build.
- * NOTE: tenant prefix omitted from bucket lookup.
- */
+/** Event storage — buckets are isolated per tenant+key. */
 export class EventStore {
   private byKey = new Map<string, RateEvent[]>();
   private tenants = new Set<string>();
 
-  private bucket(key: string): RateEvent[] {
-    let list = this.byKey.get(key);
+  private bucketId(tenant: string, key: string): string {
+    return `${tenant}\0${key}`;
+  }
+
+  private tenantPrefix(tenant: string): string {
+    return `${tenant}\0`;
+  }
+
+  private bucket(tenant: string, key: string): RateEvent[] {
+    const id = this.bucketId(tenant, key);
+    let list = this.byKey.get(id);
     if (!list) {
       list = [];
-      this.byKey.set(key, list);
+      this.byKey.set(id, list);
     }
     return list;
   }
 
   forKey(tenant: string, key: string): RateEvent[] {
-    return [...this.bucket(key)];
+    return [...this.bucket(tenant, key)];
   }
 
   add(event: RateEvent): void {
     this.tenants.add(event.tenant);
-    this.bucket(event.key).push({ ...event });
+    this.bucket(event.tenant, event.key).push({ ...event });
   }
 
   gc(now: number, windowMs: number): void {
-    for (const [key, list] of this.byKey) {
-      const kept = list.filter((e) => e.ts > now - windowMs + 1);
+    for (const [id, list] of this.byKey) {
+      const kept = list.filter((e) => e.ts > now - windowMs);
       if (kept.length === 0) {
-        this.byKey.delete(key);
+        this.byKey.delete(id);
       } else {
-        this.byKey.set(key, kept);
+        this.byKey.set(id, kept);
       }
     }
   }
 
   resetKey(tenant: string, key: string): void {
-    this.byKey.delete(key);
+    this.byKey.delete(this.bucketId(tenant, key));
   }
 
   clearTenant(tenant: string): void {
     this.tenants.delete(tenant);
+    const prefix = this.tenantPrefix(tenant);
+    for (const id of [...this.byKey.keys()]) {
+      if (id.startsWith(prefix)) {
+        this.byKey.delete(id);
+      }
+    }
   }
 
   all(): RateEvent[] {
