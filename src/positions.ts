@@ -1,9 +1,15 @@
-/** Bloom slot positions — starter stub. */
+import { hashAt } from "./hash.js";
+
+/** Map a key to its k counter slot positions. */
 export function positionsForKey(
-  _key: string,
-  _width: number,
-  _hashes: number,
-  _seed: number,
+  key: string,
+  width: number,
+  hashes: number,
+  seed: number,
 ): number[] {
-  throw new Error("positionsForKey not implemented");
+  const positions = new Array<number>(hashes);
+  for (let i = 0; i < hashes; i++) {
+    positions[i] = hashAt(key, i, seed) % width;
+  }
+  return positions;
 }
