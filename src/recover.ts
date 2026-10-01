@@ -1,6 +1,6 @@
 import type { PoolSnapshot } from "./types.js";
 import type { LeaseStore } from "./store.js";
-import type { TokenGenerator } from "./token.js";
+import { TokenGenerator } from "./token.js";
 
 export function exportSnapshot(
   store: LeaseStore,
@@ -24,6 +24,10 @@ export function importSnapshot(
   store.replaceAll(snapshot.leases);
   tokens.reset();
   tokens.importCounters(snapshot.nextToken);
+  for (const lease of snapshot.leases) {
+    tokens.ensureAtLeast(lease.tenant, lease.resource, lease.token);
+  }
+  inflight.clear();
   for (const k of snapshot.inflight ?? []) {
     inflight.add(k);
   }
