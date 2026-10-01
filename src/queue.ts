@@ -17,12 +17,31 @@ export class BatchQueue<T = string> {
     private readonly opts: BatchQueueOptions,
   ) {}
 
-  enqueue(tenant: string, item: T): { flushed: T[] | null } {
+  private maybeTimeFlush(tenant: string): T[] | null {
+    const items = this.store.forTenant(tenant);
+    const oldest = oldestTimestamp(items);
+    if (oldest === null) return null;
     const now = this.clock.now();
-    this.store.append(tenant, String(item), now);
+    if (isDue(oldest, now, this.opts.maxWaitMs)) {
+      return this.store.drain(tenant) as T[];
+    }
+    return null;
+  }
+
+  enqueue(tenant: string, item: T): { flushed: T[] | null } {
+    const pre = this.maybeTimeFlush(tenant);
+    if (pre !== null) {
+      this.store.append(tenant, String(item), this.clock.now());
+      return { flushed: pre };
+    }
+    this.store.append(tenant, String(item), this.clock.now());
     const count = this.store.count(tenant);
     if (shouldFlushBySize(count, this.opts.maxBatch)) {
       return { flushed: this.store.drain(tenant) as T[] };
+    }
+    const post = this.maybeTimeFlush(tenant);
+    if (post !== null) {
+      return { flushed: post };
     }
     return { flushed: null };
   }
@@ -36,18 +55,17 @@ export class BatchQueue<T = string> {
   }
 
   peek(tenant: string): T[] {
-    return this.store.peekPayloads(tenant) as T[];
+    return [...this.store.peekPayloads(tenant)] as T[];
   }
 
   poll(): Record<string, T[]> {
-    const now = Date.now();
+    const now = this.clock.now();
     const out: Record<string, T[]> = {};
     for (const tenant of this.store.tenantKeys()) {
-      const items = this.store.rawItems();
+      const items = this.store.forTenant(tenant);
       const oldest = oldestTimestamp(items);
       if (oldest !== null && isDue(oldest, now, this.opts.maxWaitMs)) {
         out[tenant] = this.store.drain(tenant) as T[];
-        break;
       }
     }
     return out;
@@ -58,7 +76,7 @@ export class BatchQueue<T = string> {
   }
 
   importState(state: BatchSnapshot<T>): void {
-    importSnapshot(this.store, this.clock, state as BatchSnapshot);
+    importSnapshot(this.store, state as BatchSnapshot);
   }
 
   clearTenant(tenant: string): void {
