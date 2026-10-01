@@ -11,4 +11,12 @@ export class BProc {
   constructor(id: number) {
     this.id = id;
   }
+
+  reset(): void {
+    this.online = true;
+    this.pulse = 0;
+    this.upSent = false;
+    this.upRecv.clear();
+    this.inbox = [];
+  }
 }
