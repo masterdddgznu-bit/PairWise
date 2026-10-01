@@ -1,3 +1,5 @@
+import { fisherYatesSample } from "./sample.js";
+
 /** Exact string bag (base mode). */
 export class ExactBag {
   private readonly items: string[] = [];
@@ -17,7 +19,7 @@ export class ExactBag {
   sampleExact(k: number, seed: number): string[] {
     const sorted = this.values();
     if (sorted.length <= k) return sorted;
-    throw new Error("sampleExact not implemented");
+    return fisherYatesSample(sorted, seed).slice(0, k);
   }
 
   clear(): void {

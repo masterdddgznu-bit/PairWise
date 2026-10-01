@@ -1,22 +1,31 @@
-/** Seeded LCG — starter stub. NO Math.random. */
+/** Seeded LCG (a=1664525, c=1013904223, m=2^32). NO Math.random. */
 export class LcgRng {
-  constructor(_seed: number) {
-    /* params accepted */
+  private static readonly A = 1664525;
+  private static readonly C = 1013904223;
+  private static readonly M = 4294967296;
+
+  private state: number;
+
+  constructor(seed: number) {
+    this.state = seed >>> 0;
   }
 
   next(): number {
-    throw new Error("next not implemented");
+    this.state = (this.state * LcgRng.A + LcgRng.C) >>> 0;
+    return this.state;
   }
 
   nextFloat(): number {
-    throw new Error("nextFloat not implemented");
+    return this.next() / LcgRng.M;
   }
 
   getState(): number {
-    throw new Error("getState not implemented");
+    return this.state;
   }
 
-  static fromState(_state: number): LcgRng {
-    throw new Error("fromState not implemented");
+  static fromState(state: number): LcgRng {
+    const rng = new LcgRng(0);
+    rng.state = state >>> 0;
+    return rng;
   }
 }
