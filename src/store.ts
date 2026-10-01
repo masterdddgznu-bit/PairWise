@@ -1,87 +1,106 @@
 import type { CacheRecord } from "./types.js";
+import { isLive } from "./entry.js";
 
-/**
- * Cache storage — keys indexed globally in this partial build.
- * NOTE: tenant prefix omitted from bucket lookup.
- */
+/** Per-tenant cache maps — ids isolated by tenant. */
 export class CacheStore {
-  private global = new Map<string, CacheRecord>();
-  private activeIndex = new Set<string>();
-  private genByKey = new Map<string, number>();
+  private byTenant = new Map<string, Map<string, CacheRecord>>();
+  private genCounters = new Map<string, number>();
 
-  private storageKey(_tenant: string, key: string): string {
-    return key;
-  }
-
-  private idxKey(tenant: string, key: string): string {
+  private tk(tenant: string, key: string): string {
     return `${tenant}\0${key}`;
   }
 
+  private bucket(tenant: string): Map<string, CacheRecord> {
+    let m = this.byTenant.get(tenant);
+    if (!m) {
+      m = new Map();
+      this.byTenant.set(tenant, m);
+    }
+    return m;
+  }
+
   currentGeneration(tenant: string, key: string): number {
-    const g = this.genByKey.get(this.storageKey(tenant, key));
-    return g ?? 0;
+    return this.genCounters.get(this.tk(tenant, key)) ?? 0;
   }
 
   bumpGeneration(tenant: string, key: string): number {
-    const sk = this.storageKey(tenant, key);
-    const cur = this.genByKey.get(sk) ?? 0;
-    this.genByKey.set(sk, cur);
-    return cur;
+    const tk = this.tk(tenant, key);
+    const next = (this.genCounters.get(tk) ?? 0) + 1;
+    this.genCounters.set(tk, next);
+    return next;
   }
 
   get(tenant: string, key: string): CacheRecord | undefined {
-    const rec = this.global.get(this.storageKey(tenant, key));
+    const rec = this.bucket(tenant).get(key);
     if (!rec) return undefined;
     return { ...rec };
   }
 
   put(record: CacheRecord): void {
-    const sk = this.storageKey(record.tenant, record.key);
-    this.global.set(sk, { ...record });
-    this.activeIndex.add(this.idxKey(record.tenant, record.key));
-    this.genByKey.set(sk, record.generation);
+    this.bucket(record.tenant).set(record.key, { ...record });
+    this.genCounters.set(this.tk(record.tenant, record.key), record.generation);
   }
 
   remove(tenant: string, key: string): void {
-    this.global.delete(this.storageKey(tenant, key));
-    this.activeIndex.delete(this.idxKey(tenant, key));
+    this.bucket(tenant).delete(key);
   }
 
-  hasIndex(tenant: string, key: string): boolean {
-    return this.activeIndex.has(this.idxKey(tenant, key));
+  bumpOnInvalidate(tenant: string, key: string): number {
+    return this.bumpGeneration(tenant, key);
   }
 
   gc(now: number): void {
-    for (const [sk, rec] of this.global) {
-      if (now > rec.expiresAt) {
-        this.global.delete(sk);
+    for (const [tenant, map] of this.byTenant) {
+      for (const [key, rec] of map) {
+        if (!isLive(rec.expiresAt, now)) {
+          map.delete(key);
+        }
+      }
+      if (map.size === 0) {
+        this.byTenant.delete(tenant);
       }
     }
   }
 
-  countIndexed(_tenant?: string): number {
-    return this.activeIndex.size;
+  countLive(now: number, tenant?: string): number {
+    let n = 0;
+    const tenants = tenant ? [tenant] : [...this.byTenant.keys()];
+    for (const t of tenants) {
+      const map = this.byTenant.get(t);
+      if (!map) continue;
+      for (const rec of map.values()) {
+        if (isLive(rec.expiresAt, now)) n++;
+      }
+    }
+    return n;
   }
 
   all(): CacheRecord[] {
-    return [...this.global.values()].map((r) => ({ ...r }));
+    const out: CacheRecord[] = [];
+    for (const map of this.byTenant.values()) {
+      for (const r of map.values()) out.push({ ...r });
+    }
+    return out;
   }
 
   allGenerations(): Array<{ tenant: string; key: string; generation: number }> {
     const out: Array<{ tenant: string; key: string; generation: number }> = [];
-    for (const rec of this.global.values()) {
-      out.push({ tenant: rec.tenant, key: rec.key, generation: rec.generation });
+    for (const [tk, generation] of this.genCounters) {
+      const sep = tk.indexOf("\0");
+      out.push({ tenant: tk.slice(0, sep), key: tk.slice(sep + 1), generation });
     }
     return out;
   }
 
   replaceAll(
     records: CacheRecord[],
-    _generations: Array<{ tenant: string; key: string; generation: number }>,
+    generations: Array<{ tenant: string; key: string; generation: number }>,
   ): void {
-    this.global.clear();
-    this.activeIndex.clear();
-    this.genByKey.clear();
+    this.byTenant.clear();
+    this.genCounters.clear();
+    for (const g of generations) {
+      this.genCounters.set(this.tk(g.tenant, g.key), g.generation);
+    }
     for (const r of records) {
       this.put(r);
     }

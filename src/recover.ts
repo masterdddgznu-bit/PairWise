@@ -1,7 +1,7 @@
 import type { CacheSnapshot } from "./types.js";
 import type { CacheStore } from "./store.js";
 import type { VirtualClock } from "./clock.js";
-import { computeExpiresAt } from "./entry.js";
+import { isLive } from "./entry.js";
 
 export function exportSnapshot(store: CacheStore): CacheSnapshot {
   return {
@@ -14,16 +14,11 @@ export function exportSnapshot(store: CacheStore): CacheSnapshot {
 export function importSnapshot(
   store: CacheStore,
   clock: VirtualClock,
-  defaultTtlMs: number,
+  _defaultTtlMs: number,
   snapshot: CacheSnapshot,
 ): void {
   const now = clock.now();
-  const records = (snapshot.records ?? []).map((r) => ({
-    tenant: r.tenant,
-    key: r.key,
-    value: r.value,
-    generation: r.generation,
-    expiresAt: computeExpiresAt(now, defaultTtlMs),
-  }));
-  store.replaceAll(records, snapshot.generations ?? []);
+  const live = (snapshot.records ?? []).filter((r) => isLive(r.expiresAt, now));
+  store.replaceAll(live, snapshot.generations ?? []);
+  store.gc(now);
 }

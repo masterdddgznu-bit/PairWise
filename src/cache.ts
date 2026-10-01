@@ -2,7 +2,7 @@ import type { VirtualClock } from "./clock.js";
 import type { CacheGetResult, CacheSnapshot, CacheStats } from "./types.js";
 import { CacheStore } from "./store.js";
 import { Singleflight } from "./singleflight.js";
-import { computeExpiresAt } from "./entry.js";
+import { computeExpiresAt, isLive } from "./entry.js";
 import { exportSnapshot, importSnapshot } from "./recover.js";
 
 export type TokenCacheOptions = {
@@ -26,9 +26,15 @@ export class TokenCache {
     return `${tenant}\0${key}`;
   }
 
+  private touchGc(): void {
+    this.store.gc(this.clock.now());
+  }
+
   get<V = unknown>(tenant: string, key: string): CacheGetResult<V> | undefined {
+    this.touchGc();
     const rec = this.store.get(tenant, key);
     if (!rec) return undefined;
+    if (!isLive(rec.expiresAt, this.clock.now())) return undefined;
     return { value: rec.value as V, generation: rec.generation };
   }
 
@@ -47,15 +53,23 @@ export class TokenCache {
 
   invalidate(tenant: string, key: string): void {
     this.store.remove(tenant, key);
+    this.store.bumpOnInvalidate(tenant, key);
   }
 
   compareAndSet<V = unknown>(
     tenant: string,
     key: string,
-    _expectedGen: number,
+    expectedGen: number,
     value: V,
     ttlMs?: number,
   ): boolean {
+    const current = this.store.get(tenant, key);
+    const liveGen = current && isLive(current.expiresAt, this.clock.now())
+      ? current.generation
+      : this.store.currentGeneration(tenant, key);
+    if (liveGen !== expectedGen) {
+      return false;
+    }
     const now = this.clock.now();
     const generation = this.store.bumpGeneration(tenant, key);
     const expiresAt = computeExpiresAt(now, this.ttlMs(ttlMs));
@@ -90,7 +104,8 @@ export class TokenCache {
   }
 
   size(tenant?: string): number {
-    return this.store.countIndexed(tenant);
+    this.touchGc();
+    return this.store.countLive(this.clock.now(), tenant);
   }
 
   stats(): CacheStats {
