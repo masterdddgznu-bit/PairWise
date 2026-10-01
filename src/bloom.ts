@@ -1,50 +1,134 @@
 import { BloomError } from "./errors.js";
+import { positionsForKey } from "./positions.js";
 import type { BloomStats } from "./types.js";
 
-/** Counting Bloom Filter — starter stub. */
+const MAX_COUNT = 65535;
+
+/** Deterministic Counting Bloom Filter backed by 16-bit counters. */
 export class CountingBloom {
-  constructor(_width: number, _hashes: number, _seed: number) {
-    /* params accepted; methods throw until implemented */
+  private readonly width: number;
+  private readonly hashes: number;
+  private readonly seed: number;
+  private readonly counters: Uint16Array;
+  private frozen = false;
+
+  constructor(width: number, hashes: number, seed: number) {
+    if (!Number.isInteger(width) || width < 8 || width > 65536) {
+      throw new BloomError(`invalid width: ${width}`);
+    }
+    if (!Number.isInteger(hashes) || hashes < 1 || hashes > 16) {
+      throw new BloomError(`invalid hashes: ${hashes}`);
+    }
+    this.width = width;
+    this.hashes = hashes;
+    this.seed = seed;
+    this.counters = new Uint16Array(width);
   }
 
-  add(_key: string, _n = 1): void {
-    throw new Error("add not implemented");
+  private assertMutable(): void {
+    if (this.frozen) throw new BloomError("filter is frozen");
   }
 
-  remove(_key: string, _n = 1): void {
-    throw new Error("remove not implemented");
+  private static assertValidN(n: number): void {
+    if (!Number.isInteger(n) || n <= 0) {
+      throw new BloomError(`invalid n: ${n}`);
+    }
   }
 
-  mightContain(_key: string): boolean {
-    throw new Error("mightContain not implemented");
+  private positions(key: string): number[] {
+    return positionsForKey(key, this.width, this.hashes, this.seed);
   }
 
-  estimateCount(_key: string): number {
-    throw new Error("estimateCount not implemented");
+  add(key: string, n = 1): void {
+    this.assertMutable();
+    CountingBloom.assertValidN(n);
+    for (const pos of this.positions(key)) {
+      const next = this.counters[pos] + n;
+      this.counters[pos] = next > MAX_COUNT ? MAX_COUNT : next;
+    }
   }
 
-  merge(_other: CountingBloom): void {
-    throw new Error("merge not implemented");
+  remove(key: string, n = 1): void {
+    this.assertMutable();
+    CountingBloom.assertValidN(n);
+    for (const pos of this.positions(key)) {
+      const next = this.counters[pos] - n;
+      this.counters[pos] = next < 0 ? 0 : next;
+    }
+  }
+
+  mightContain(key: string): boolean {
+    for (const pos of this.positions(key)) {
+      if (this.counters[pos] === 0) return false;
+    }
+    return true;
+  }
+
+  estimateCount(key: string): number {
+    let min = Infinity;
+    for (const pos of this.positions(key)) {
+      if (this.counters[pos] < min) min = this.counters[pos];
+    }
+    return min;
+  }
+
+  merge(other: CountingBloom): void {
+    this.assertMutable();
+    if (
+      this.width !== other.width ||
+      this.hashes !== other.hashes ||
+      this.seed !== other.seed
+    ) {
+      throw new BloomError("merge requires matching width, hashes and seed");
+    }
+    for (let i = 0; i < this.width; i++) {
+      if (other.counters[i] > this.counters[i]) {
+        this.counters[i] = other.counters[i];
+      }
+    }
   }
 
   exportCounters(): number[] {
-    throw new Error("exportCounters not implemented");
+    return Array.from(this.counters);
   }
 
   static fromCounters(
-    _width: number,
-    _hashes: number,
-    _seed: number,
-    _counters: number[],
+    width: number,
+    hashes: number,
+    seed: number,
+    counters: number[],
   ): CountingBloom {
-    throw new Error("fromCounters not implemented");
+    const bf = new CountingBloom(width, hashes, seed);
+    if (counters.length !== width) {
+      throw new BloomError(
+        `counters length ${counters.length} does not match width ${width}`,
+      );
+    }
+    for (let i = 0; i < width; i++) {
+      const value = counters[i];
+      if (!Number.isInteger(value) || value < 0 || value > MAX_COUNT) {
+        throw new BloomError(`invalid counter value at ${i}: ${value}`);
+      }
+      bf.counters[i] = value;
+    }
+    return bf;
   }
 
   freeze(): void {
-    throw new Error("freeze not implemented");
+    this.frozen = true;
   }
 
   stats(): BloomStats {
-    throw new Error("stats not implemented");
+    let nonZero = 0;
+    for (let i = 0; i < this.width; i++) {
+      if (this.counters[i] > 0) nonZero++;
+    }
+    return {
+      width: this.width,
+      hashes: this.hashes,
+      seed: this.seed,
+      frozen: this.frozen,
+      nonZero,
+    };
   }
 }
