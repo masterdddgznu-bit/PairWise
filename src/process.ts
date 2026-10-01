@@ -6,5 +6,8 @@ export class MProc {
   black = false;
   delta = 0;
   vc: number[] = [];
-  constructor(id: number) { this.id = id; }
+  constructor(id: number, size = 0) {
+    this.id = id;
+    this.vc = new Array<number>(size).fill(0);
+  }
 }
