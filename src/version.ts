@@ -1,11 +1,13 @@
 import type { KVEntry } from "./types.js";
 
-/** Pick highest-version entry; BUG: returns first defined. */
+/** Pick highest-version entry. */
 export function pickHighest(entries: (KVEntry | undefined)[]): KVEntry | undefined {
+  let best: KVEntry | undefined;
   for (const e of entries) {
-    if (e !== undefined) return e;
+    if (!e) continue;
+    if (!best || e.version > best.version) best = e;
   }
-  return undefined;
+  return best;
 }
 
 export function maxVersion(entries: (KVEntry | undefined)[]): number {
@@ -16,7 +18,6 @@ export function maxVersion(entries: (KVEntry | undefined)[]): number {
   return m;
 }
 
-/** BUG: does not increment. */
 export function nextVersion(seenMax: number): number {
-  return seenMax;
+  return seenMax + 1;
 }

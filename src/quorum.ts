@@ -1,14 +1,15 @@
 import { InvalidQuorumError } from "./errors.js";
 
-/** BUG: never rejects invalid quorum. */
-export function validateQuorum(_n: number, _r: number, _w: number): void {
-  return;
+export function validateQuorum(n: number, r: number, w: number): void {
+  if (r + w <= n) throw new InvalidQuorumError();
+  if (r < 1 || w < 1 || n < 1) throw new InvalidQuorumError("invalid counts");
 }
 
-/** BUG: counts failed replicas as healthy. */
-export function listHealthy(n: number, _down: Set<number>, _stale: Set<number>): number[] {
+export function listHealthy(n: number, down: Set<number>, stale: Set<number>): number[] {
   const ids: number[] = [];
-  for (let i = 0; i < n; i++) ids.push(i);
+  for (let i = 0; i < n; i++) {
+    if (!down.has(i) && !stale.has(i)) ids.push(i);
+  }
   return ids;
 }
 
