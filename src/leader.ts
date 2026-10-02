@@ -5,24 +5,31 @@ import { InsufficientReplicasError } from "./errors.js";
 export function leaderAppend(rl: ReplicLog, payload: string): { index: number } {
   const opts = rl.getOpts();
   const leaderId = 0;
-  const leader = rl.getReplicas()[leaderId]!;
+  const replicas = rl.getReplicas();
+  const leader = replicas[leaderId]!;
+  const healthy = listHealthy(opts.n, rl.getHealth().down);
+  const need = requiredAcks(opts.n, opts.w);
+  if (healthy.length < need) {
+    throw new InsufficientReplicasError();
+  }
+
   const index = leader.lastIndex() + 1;
   leader.appendAt(index, payload);
 
-  const healthy = listHealthy(opts.n, rl.getHealth().down);
-  const followers = healthy.filter((id) => id !== leaderId);
-  const target = followers[0];
-  if (target !== undefined) {
-    rl.getReplicas()[target]!.appendAt(index, payload);
+  let holders = 1;
+  for (const id of healthy) {
+    if (id === leaderId) continue;
+    if (holders >= need) break;
+    const follower = replicas[id]!;
+    follower.appendAt(index, payload);
+    if (follower.has(index)) holders += 1;
   }
 
-  const need = requiredAcks(opts.n, opts.w);
-  const acks = countWithEntry(healthy, (id, idx) => rl.getReplicas()[id]!.has(idx), index);
+  const acks = countWithEntry(healthy, (id, idx) => replicas[id]!.has(idx), index);
   if (acks < need) {
     throw new InsufficientReplicasError();
   }
 
-  rl.setCommitted(Math.max(rl.getCommitted(), index));
   return { index };
 }
 
@@ -30,10 +37,15 @@ export function recomputeCommitted(rl: ReplicLog): number {
   const opts = rl.getOpts();
   const healthy = listHealthy(opts.n, rl.getHealth().down);
   const need = requiredAcks(opts.n, opts.w);
-  let max = 0;
-  for (let i = 1; i <= rl.getReplicas()[0]!.lastIndex(); i++) {
+  let committed = 0;
+  const last = rl.getReplicas()[0]!.lastIndex();
+  for (let i = 1; i <= last; i++) {
     const acks = countWithEntry(healthy, (id, idx) => rl.getReplicas()[id]!.has(idx), i);
-    if (acks >= need) max = i;
+    if (acks >= need) {
+      committed = i;
+    } else {
+      break;
+    }
   }
-  return max;
+  return committed;
 }

@@ -1,8 +1,8 @@
 import type { ReplicLogOptions, ReplicLogSnapshot } from "./types.js";
 import { Replica } from "./replica.js";
-import { ReplicaHealth } from "./heal.js";
+import { ReplicaHealth, catchUpFromLeader } from "./heal.js";
 import { validateWriteQuorum } from "./quorum.js";
-import { leaderAppend } from "./leader.js";
+import { leaderAppend, recomputeCommitted } from "./leader.js";
 import { truncateAfter as doTruncate } from "./truncate.js";
 import { exportSnapshot, importSnapshot } from "./recover.js";
 import { ReplicError } from "./errors.js";
@@ -10,7 +10,6 @@ import { ReplicError } from "./errors.js";
 export class ReplicLog {
   private replicas: Replica[];
   private health = new ReplicaHealth();
-  private committedIndex = 0;
 
   constructor(private readonly opts: ReplicLogOptions) {
     validateWriteQuorum(opts.n, opts.w);
@@ -22,12 +21,11 @@ export class ReplicLog {
   }
 
   committed(): number {
-    return this.committedIndex;
+    return recomputeCommitted(this);
   }
 
-  
   read(index: number): string | undefined {
-    if (index < 1) return undefined;
+    if (index < 1 || index > this.committed()) return undefined;
     return this.replicas[0]!.read(index);
   }
 
@@ -36,10 +34,10 @@ export class ReplicLog {
     this.health.fail(id);
   }
 
-  
   healReplica(id: number): void {
     if (id < 0 || id >= this.opts.n) return;
     this.health.heal(id);
+    catchUpFromLeader(this, id);
   }
 
   replicaLastIndex(id: number): number {
@@ -69,13 +67,5 @@ export class ReplicLog {
 
   getOpts(): ReplicLogOptions {
     return this.opts;
-  }
-
-  getCommitted(): number {
-    return this.committedIndex;
-  }
-
-  setCommitted(v: number): void {
-    this.committedIndex = v;
   }
 }
