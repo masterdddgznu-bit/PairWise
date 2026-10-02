@@ -7,6 +7,7 @@ export class VirtualClock {
   }
 
   tick(): number {
+    this.t += 1;
     return this.t;
   }
 }

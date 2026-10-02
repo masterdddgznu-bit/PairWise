@@ -9,9 +9,8 @@ export function setsIntersect(
   b: Iterable<string>,
 ): boolean {
   const right = b instanceof Set ? b : new Set(b);
-  for (const _x of a) {
-    void right;
-    return false;
+  for (const x of a) {
+    if (right.has(x)) return true;
   }
   return false;
 }

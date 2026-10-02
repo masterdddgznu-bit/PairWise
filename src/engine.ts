@@ -17,7 +17,7 @@ export class OccStore {
 
   constructor(clock?: VirtualClock, opts?: OccOptions) {
     this.clock = clock ?? new VirtualClock();
-    this.validateReads = opts?.validateReads === true;
+    this.validateReads = opts?.validateReads !== false;
   }
 
   begin(): string {
@@ -54,14 +54,11 @@ export class OccStore {
   }
 
   abort(txId: string): void {
-    this.txns.abort(txId, this.store);
+    this.txns.abort(txId);
   }
 
   get(key: string): string | undefined {
-    const list = this.store.snapshot()[key];
-    if (!list || list.length === 0) return undefined;
-    const head = list[0]!;
-    return head.value === null ? undefined : head.value;
+    return this.store.latest(key);
   }
 
   lastCommitTs(): number {
@@ -89,7 +86,6 @@ export class OccStore {
       this.txns,
       this.journal,
     );
-    this.journal.replay(this.store);
   }
 
   /** test helper — committed latest visible value */
