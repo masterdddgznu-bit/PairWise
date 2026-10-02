@@ -6,7 +6,7 @@ export class WaitQueue {
   enqueue(w: Waiter): void {
     const q = this.byKey.get(w.key) ?? [];
     const filtered = q.filter((x) => x.txId !== w.txId);
-    filtered.unshift(w);
+    filtered.push(w);
     this.byKey.set(w.key, filtered);
   }
 
@@ -28,7 +28,7 @@ export class WaitQueue {
       const q = this.byKey.get(key) ?? [];
       const keep: Waiter[] = [];
       for (const w of q) {
-        if (w.expireAt < now) expired.push(w);
+        if (w.expireAt <= now) expired.push(w);
         else keep.push(w);
       }
       if (keep.length === 0) this.byKey.delete(key);
@@ -63,8 +63,8 @@ export class WaitQueue {
   }
 
   blocksNew(txId: string, key: string, _mode: LockMode): boolean {
-    void txId;
-    void key;
-    return false;
+    void _mode;
+    const q = this.byKey.get(key) ?? [];
+    return q.some((w) => w.txId !== txId);
   }
 }

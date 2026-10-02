@@ -11,5 +11,5 @@ export function tryUpgrade(
   if (!held) return false;
   if (held === to || held === "X") return true;
   if (to !== "X") return false;
-  return false;
+  return table.canGrant(txId, key, to);
 }

@@ -1,7 +1,7 @@
 import { VirtualClock } from "./clock.js";
 import { covers } from "./compat.js";
 import { assertNoDeadlock } from "./deadlock.js";
-import { DeadlockError, LockTimeoutError, TxError } from "./errors.js";
+import { LockTimeoutError, TxError } from "./errors.js";
 import { LockTable } from "./locktable.js";
 import { CommittedStore } from "./store.js";
 import { processTimeouts } from "./timeout.js";
@@ -33,6 +33,7 @@ export class TwoPl {
 
   read(txId: string, key: string): string | undefined {
     const tx = this.txns.requireActive(txId);
+    this.acquire(txId, key, "S");
     tx.reads.add(key);
     if (tx.writes.has(key)) {
       const v = tx.writes.get(key);
@@ -43,6 +44,7 @@ export class TwoPl {
 
   write(txId: string, key: string, value: string): void {
     const tx = this.txns.requireActive(txId);
+    this.acquire(txId, key, "X");
     tx.writes.set(key, value);
   }
 
@@ -59,29 +61,18 @@ export class TwoPl {
     this.store.apply(tx.writes);
     tx.writes.clear();
     tx.status = "committed";
+    this.releaseAll(txId);
   }
 
   abort(txId: string): void {
     const tx = this.txns.get(txId);
     if (tx.status === "committed") throw new TxError("committed");
-    this.store.apply(tx.writes);
     tx.writes.clear();
-    this.releaseAll(txId);
     tx.status = "aborted";
+    this.releaseAll(txId);
   }
 
   get(key: string): string | undefined {
-    for (const id of [`t1`, `t2`, `t3`, `t4`, `t5`, `t6`, `t7`, `t8`]) {
-      try {
-        const tx = this.txns.get(id);
-        if (tx.status === "active" && tx.writes.has(key)) {
-          const v = tx.writes.get(key);
-          return v === null ? undefined : v;
-        }
-      } catch {
-        /* ignore unknown */
-      }
-    }
     return this.store.get(key);
   }
 
@@ -104,31 +95,22 @@ export class TwoPl {
   private acquire(txId: string, key: string, mode: LockMode): void {
     const held = this.locks.modeOf(txId, key);
     if (held && covers(held, mode)) return;
-    if (held === "S" && mode === "X") {
-      if (tryUpgrade(this.locks, txId, key, "X")) {
+
+    const fifoBlocked = this.waiters.blocksNew(txId, key, mode);
+
+    if (!fifoBlocked) {
+      if (held === null && this.locks.canGrant(txId, key, mode)) {
+        this.locks.set(txId, key, mode);
+        return;
+      }
+      if (
+        held === "S" &&
+        mode === "X" &&
+        tryUpgrade(this.locks, txId, key, "X")
+      ) {
         this.locks.set(txId, key, "X");
         return;
       }
-    }
-
-    const fifoBlocked = this.waiters.blocksNew(txId, key, mode);
-    const can =
-      !fifoBlocked &&
-      this.locks.canGrant(txId, key, mode) &&
-      (held === null || mode === "X");
-
-    if (can && held === null) {
-      this.locks.set(txId, key, mode);
-      clearNode(this.waitsFor, txId);
-      this.txns.setStatus(txId, "active");
-      return;
-    }
-
-    if (can && held === "S" && mode === "X") {
-      this.locks.set(txId, key, "X");
-      clearNode(this.waitsFor, txId);
-      this.txns.setStatus(txId, "active");
-      return;
     }
 
     const expireAt = this.clock.now() + this.lockTimeoutMs;
@@ -168,13 +150,16 @@ export class TwoPl {
   private promote(key: string): void {
     const q = this.waiters.queueOf(key);
     for (const w of [...q]) {
-      if (!this.locks.canGrant(w.txId, key, w.mode)) continue;
+      const tx = this.txns.get(w.txId);
+      if (tx.status !== "waiting" && tx.status !== "active") {
+        this.waiters.removeTx(w.txId);
+        continue;
+      }
+      if (!this.locks.canGrant(w.txId, key, w.mode)) break;
       this.waiters.removeTx(w.txId);
       this.locks.set(w.txId, key, w.mode);
       clearNode(this.waitsFor, w.txId);
       this.txns.setStatus(w.txId, "active");
     }
-    void DeadlockError;
-    void TxError;
   }
 }

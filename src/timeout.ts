@@ -6,13 +6,25 @@ import { clearNode } from "./waitfor.js";
 export function processTimeouts(
   now: number,
   waiters: WaitQueue,
-  _txns: TxnTable,
-  _locks: LockTable,
+  txns: TxnTable,
+  locks: LockTable,
   waitsFor: Map<string, Set<string>>,
-  _promote: (key: string) => void,
+  promote: (key: string) => void,
 ): void {
   const expired = waiters.removeExpired(now);
+  const touched = new Set<string>();
+  const done = new Set<string>();
   for (const w of expired) {
+    if (done.has(w.txId)) continue;
+    done.add(w.txId);
     clearNode(waitsFor, w.txId);
+    const tx = txns.get(w.txId);
+    if (tx.status === "active" || tx.status === "waiting") {
+      tx.writes.clear();
+      txns.setStatus(w.txId, "aborted");
+    }
+    for (const key of locks.removeAll(w.txId)) touched.add(key);
+    touched.add(w.key);
   }
+  for (const key of touched) promote(key);
 }
