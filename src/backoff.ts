@@ -1,3 +1,3 @@
 export function retryDelay(base: number, failedAttempt: number): number {
-  return base * failedAttempt;
+  return base * 2 ** (failedAttempt - 1);
 }

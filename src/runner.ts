@@ -26,27 +26,37 @@ export class SagaRunner {
 
   registerDefinition(input: SagaDefinition): void {
     const def = normalizeDefinition(input);
-    this.definitions.set(def.name, input);
+    if (this.definitions.has(def.name)) throw new SagaError(`duplicate definition: ${def.name}`);
+    this.definitions.set(def.name, def);
   }
 
   begin(defName: string, input: Record<string, unknown> = {}, requestedId?: string): string {
     if (!this.definitions.has(defName)) throw new SagaError(`unknown definition: ${defName}`);
-    const sagaId = requestedId ?? `s${this.nextId++}`;
-    const runtime = newRuntime(sagaId, defName, input);
+    let sagaId = requestedId ?? "";
+    if (requestedId === undefined) {
+      do {
+        sagaId = `s${this.nextId++}`;
+      } while (this.runtimes.has(sagaId));
+    }
+    if (this.runtimes.has(sagaId)) throw new SagaError(`duplicate saga id: ${sagaId}`);
+    const snapshot = structuredClone(input);
+    const runtime = newRuntime(sagaId, defName, snapshot);
     this.runtimes.set(sagaId, runtime);
     this.journal.append({
       type: "SagaBegun",
       sagaId,
       at: this.clock.now(),
       defName,
-      input,
+      input: snapshot,
     });
     return sagaId;
   }
 
   failNext(sagaId: string, error = "injected failure"): void {
     this.getRuntime(sagaId);
-    this.failures.set(sagaId, [error]);
+    const queue = this.failures.get(sagaId) ?? [];
+    queue.push(error);
+    this.failures.set(sagaId, queue);
   }
 
   runNext(sagaId: string): SagaView {
@@ -63,8 +73,11 @@ export class SagaRunner {
         return viewOf(runtime);
       }
       runtime.compensatedSteps.push(item.label);
-      runtime.compensationIndex += 1;
       this.journal.append({ type: "StepCompensated", sagaId, at: this.clock.now(), step: item.step, label: item.label });
+      if (runtime.compensatedSteps.length >= runtime.completedSteps.length) {
+        runtime.status = "failed";
+        this.journal.append({ type: "SagaFailed", sagaId, at: this.clock.now(), error: runtime.error ?? "failed" });
+      }
       return viewOf(runtime);
     }
 
@@ -82,23 +95,30 @@ export class SagaRunner {
     const queue = this.failures.get(sagaId) ?? [];
     const error = queue.shift();
     if (error !== undefined) {
+      runtime.error = error;
       const maxAttempts = step.maxAttempts ?? 1;
-      if (attempt <= maxAttempts) {
+      if (attempt < maxAttempts) {
         const retryAt = this.clock.now() + retryDelay(step.backoff ?? 0, attempt);
         runtime.status = "waiting-retry";
         runtime.retryAt = retryAt;
-        runtime.error = error;
         this.journal.append({ type: "AttemptFailed", sagaId, at: this.clock.now(), step: step.name, attempt, error, retryAt });
       } else {
-        runtime.status = "failed";
-        runtime.error = error;
-        this.journal.append({ type: "SagaFailed", sagaId, at: this.clock.now(), error });
+        this.journal.append({ type: "AttemptFailed", sagaId, at: this.clock.now(), step: step.name, attempt, error });
+        if (runtime.completedSteps.length > 0) {
+          runtime.status = "compensating";
+          this.journal.append({ type: "CompensationStarted", sagaId, at: this.clock.now(), error });
+        } else {
+          runtime.status = "failed";
+          this.journal.append({ type: "SagaFailed", sagaId, at: this.clock.now(), error });
+        }
       }
       return viewOf(runtime);
     }
     runtime.completedSteps.push(step.name);
     runtime.stepIndex += 1;
     runtime.attempt = 0;
+    runtime.error = undefined;
+    runtime.retryAt = undefined;
     this.completedAttempts.add(key);
     this.journal.append({ type: "StepSucceeded", sagaId, at: this.clock.now(), step: step.name, attempt });
     return viewOf(runtime);
@@ -117,25 +137,54 @@ export class SagaRunner {
   }
 
   crashAndRecover(): void {
-    this.completedAttempts.clear();
     this.runtimes = replay(this.journal.all());
+    this.rebuildAttempts();
   }
 
   exportState(): ExportedState {
-    return encodeState({ version: 1, clock: this.clock.now(), nextId: 1, journal: this.journal.all() });
+    return encodeState({ version: 1, clock: this.clock.now(), nextId: this.nextId, journal: this.journal.all() });
   }
 
   importState(value: unknown): void {
     const state = decodeState(value);
+    for (const entry of state.journal) {
+      if (entry.type === "SagaBegun" && !this.definitions.has(entry.defName)) {
+        throw new SagaError(`unknown definition: ${entry.defName}`);
+      }
+    }
     this.clock.restore(state.clock);
+    this.nextId = state.nextId;
     this.journal.restore(state.journal);
-    this.runtimes = replay(state.journal);
+    this.runtimes = replay(this.journal.all());
+    this.failures.clear();
+    this.rebuildAttempts();
   }
 
   private getRuntime(sagaId: string): SagaRuntime {
     const runtime = this.runtimes.get(sagaId);
     if (!runtime) throw new SagaError(`unknown saga: ${sagaId}`);
+    this.refresh(runtime);
     return runtime;
+  }
+
+  private refresh(runtime: SagaRuntime): void {
+    if (
+      runtime.status === "waiting-retry" &&
+      runtime.retryAt !== undefined &&
+      this.clock.now() >= runtime.retryAt
+    ) {
+      runtime.status = "running";
+      runtime.retryAt = undefined;
+    }
+  }
+
+  private rebuildAttempts(): void {
+    this.completedAttempts.clear();
+    for (const entry of this.journal.all()) {
+      if (entry.type === "StepSucceeded") {
+        this.completedAttempts.add(attemptKey(entry.sagaId, entry.step, entry.attempt));
+      }
+    }
   }
 
   private getDefinition(name: string): SagaDefinition {

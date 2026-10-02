@@ -10,14 +10,41 @@ export function replay(rows: JournalEntry[]): Map<string, SagaRuntime> {
     }
     const runtime = map.get(event.sagaId);
     if (!runtime) continue;
-    if (event.type === "StepSucceeded") {
-      runtime.completedSteps.push(event.step);
-      runtime.stepIndex = Math.max(0, runtime.completedSteps.length - 1);
-    } else if (event.type === "SagaCompleted") {
-      runtime.status = "completed";
-    } else if (event.type === "SagaFailed") {
-      runtime.status = "failed";
-      runtime.error = event.error;
+    switch (event.type) {
+      case "AttemptStarted":
+        runtime.status = "running";
+        runtime.attempt = event.attempt;
+        break;
+      case "StepSucceeded":
+        runtime.completedSteps.push(event.step);
+        runtime.stepIndex = runtime.completedSteps.length;
+        runtime.attempt = 0;
+        runtime.error = undefined;
+        runtime.retryAt = undefined;
+        runtime.status = "running";
+        break;
+      case "AttemptFailed":
+        runtime.attempt = event.attempt;
+        runtime.error = event.error;
+        if (event.retryAt !== undefined) {
+          runtime.status = "waiting-retry";
+          runtime.retryAt = event.retryAt;
+        }
+        break;
+      case "CompensationStarted":
+        runtime.status = "compensating";
+        runtime.error = event.error;
+        break;
+      case "StepCompensated":
+        runtime.compensatedSteps.push(event.label);
+        break;
+      case "SagaCompleted":
+        runtime.status = "completed";
+        break;
+      case "SagaFailed":
+        runtime.status = "failed";
+        runtime.error = event.error;
+        break;
     }
   }
   return map;

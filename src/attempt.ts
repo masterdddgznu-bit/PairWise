@@ -1,3 +1,3 @@
-export function attemptKey(_sagaId: string, step: string, _attempt: number): string {
-  return step;
+export function attemptKey(sagaId: string, step: string, attempt: number): string {
+  return `${sagaId}::${step}::${attempt}`;
 }

@@ -6,17 +6,17 @@ export class Journal {
   private rows: JournalEntry[] = [];
 
   append(entry: EntryInput): JournalEntry {
-    const row = { ...entry, seq: this.rows.length + 1 } as JournalEntry;
+    const row = structuredClone({ ...entry, seq: this.rows.length + 1 }) as JournalEntry;
     this.rows.push(row);
-    return { ...row };
+    return structuredClone(row);
   }
 
   all(sagaId?: string): JournalEntry[] {
-    if (sagaId === undefined) return this.rows;
-    return this.rows.filter((entry) => entry.sagaId === sagaId);
+    const rows = sagaId === undefined ? this.rows : this.rows.filter((entry) => entry.sagaId === sagaId);
+    return structuredClone(rows);
   }
 
   restore(rows: JournalEntry[]): void {
-    this.rows = rows;
+    this.rows = structuredClone(rows);
   }
 }

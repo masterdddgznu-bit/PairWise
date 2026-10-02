@@ -25,7 +25,6 @@ export type SagaView = {
 
 export type SagaRuntime = SagaView & {
   input: Record<string, unknown>;
-  compensationIndex: number;
 };
 
 export type ExportedState = {

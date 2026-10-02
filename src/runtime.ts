@@ -13,7 +13,6 @@ export function newRuntime(
     stepIndex: 0,
     completedSteps: [],
     compensatedSteps: [],
-    compensationIndex: 0,
     attempt: 0,
   };
 }
