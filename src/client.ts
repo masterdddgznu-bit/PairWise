@@ -9,7 +9,6 @@ import { QuorumError } from "./errors.js";
 export class QuorumKV {
   private replicas: Replica[];
   private health = new ReplicaHealth();
-  private globalVersion = 0;
 
   constructor(private readonly opts: QuorumKVOptions) {
     validateQuorum(opts.n, opts.r, opts.w);
@@ -57,10 +56,5 @@ export class QuorumKV {
 
   getOpts(): QuorumKVOptions {
     return this.opts;
-  }
-
-  bumpGlobal(): number {
-    this.globalVersion += 1;
-    return this.globalVersion;
   }
 }

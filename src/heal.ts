@@ -8,9 +8,9 @@ export class ReplicaHealth {
     this.stale.add(id);
   }
 
-  /** BUG: does not clear stale on heal. */
   heal(id: number): void {
     this.down.delete(id);
+    this.stale.delete(id);
   }
 
   snapshotDown(): number[] {

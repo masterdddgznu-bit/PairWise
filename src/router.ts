@@ -1,30 +1,48 @@
 import type { QuorumKV } from "./client.js";
 import { listHealthy, pickQuorum } from "./quorum.js";
-import { pickHighest } from "./version.js";
-import { StaleWriteError } from "./errors.js";
+import { maxVersion, nextVersion, pickHighest } from "./version.js";
+import { InsufficientReplicasError, StaleWriteError } from "./errors.js";
 
-/** BUG: one replica, no read quorum, global version bleed, no re-bump same key. */
 export function routePut(
   kv: QuorumKV,
   key: string,
   value: string,
   expectedVersion?: number,
 ): { version: number } {
-  const existing = kv.getReplicas()[0]!.get(key);
-  const version = existing ? existing.version : kv.bumpGlobal();
-  if (expectedVersion !== undefined && version <= expectedVersion) {
+  const opts = kv.getOpts();
+  const healthy = listHealthy(opts.n, kv.getHealth().down, kv.getHealth().stale);
+  if (healthy.length < opts.w) {
+    throw new InsufficientReplicasError();
+  }
+  const readers = pickQuorum(healthy, opts.r);
+  const seen = readers.map((id) => kv.getReplicas()[id]!.get(key));
+  const seenMax = maxVersion(seen);
+  if (expectedVersion !== undefined && seenMax > expectedVersion) {
     throw new StaleWriteError();
   }
-  kv.getReplicas()[0]!.put(key, { value, version });
+  const version = nextVersion(seenMax);
+  const writers = pickQuorum(healthy, opts.w);
+  for (const id of writers) {
+    kv.getReplicas()[id]!.put(key, { value, version });
+  }
   return { version };
 }
 
-/** BUG: no read repair; pickHighest returns first. */
 export function routeGet(kv: QuorumKV, key: string): { value: string; version: number } | undefined {
   const opts = kv.getOpts();
   const healthy = listHealthy(opts.n, kv.getHealth().down, kv.getHealth().stale);
+  if (healthy.length < opts.r) {
+    throw new InsufficientReplicasError();
+  }
   const readers = pickQuorum(healthy, opts.r);
   const entries = readers.map((id) => kv.getReplicas()[id]!.get(key));
   const best = pickHighest(entries);
-  return best ? { value: best.value, version: best.version } : undefined;
+  if (best === undefined) return undefined;
+  for (let i = 0; i < readers.length; i++) {
+    const entry = entries[i];
+    if (entry === undefined || entry.version < best.version) {
+      kv.getReplicas()[readers[i]!]!.put(key, best);
+    }
+  }
+  return { value: best.value, version: best.version };
 }

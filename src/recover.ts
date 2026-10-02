@@ -12,11 +12,10 @@ export function exportSnapshot(kv: QuorumKV): QuorumSnapshot {
   };
 }
 
-/** BUG: import drops down set (always empty after import). */
 export function importSnapshot(kv: QuorumKV, state: QuorumSnapshot): void {
   const replicas = kv.getReplicas();
   for (let i = 0; i < replicas.length; i++) {
     replicas[i]!.restore(state.replicas[i] ?? {});
   }
-  kv.getHealth().restoreDown([]);
+  kv.getHealth().restoreDown(state.down ?? []);
 }
