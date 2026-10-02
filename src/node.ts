@@ -1,8 +1,11 @@
-/** Node id helpers — starter stub. */
-export function allocateId(_nextId: number): number {
-  throw new Error("allocateId not implemented");
+import { LeafNode } from "./leaf.js";
+
+/** Deterministic node id allocation from the tree-local counter. */
+export function allocateId(nextId: number): number {
+  return nextId;
 }
 
-export function isLeafNode(_node: unknown): boolean {
-  throw new Error("isLeafNode not implemented");
+/** Discriminate leaf nodes from internal nodes. */
+export function isLeafNode(node: unknown): node is LeafNode {
+  return node instanceof LeafNode;
 }
