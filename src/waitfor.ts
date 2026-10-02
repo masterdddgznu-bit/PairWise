@@ -1,4 +1,3 @@
-/** Wait-for graph helpers. BUG: edge direction reversed (holder → waiter). */
 export function addEdges(
   graph: Map<string, Set<string>>,
   from: string,

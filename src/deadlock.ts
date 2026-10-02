@@ -1,8 +1,5 @@
 import { DeadlockError } from "./errors.js";
 
-/**
- * BUG: never detects cycles — always accepts edges.
- */
 export function assertNoDeadlock(
   graph: Map<string, Set<string>>,
   from: string,

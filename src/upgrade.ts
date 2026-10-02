@@ -1,7 +1,6 @@
 import type { LockMode } from "./types.js";
 import type { LockTable } from "./locktable.js";
 
-/** BUG: refuses S→X even when sole holder. */
 export function tryUpgrade(
   table: LockTable,
   txId: string,

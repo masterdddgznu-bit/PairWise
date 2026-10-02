@@ -33,7 +33,6 @@ export class TwoPl {
 
   read(txId: string, key: string): string | undefined {
     const tx = this.txns.requireActive(txId);
-    // BUG: skip S-lock acquisition
     tx.reads.add(key);
     if (tx.writes.has(key)) {
       const v = tx.writes.get(key);
@@ -44,7 +43,6 @@ export class TwoPl {
 
   write(txId: string, key: string, value: string): void {
     const tx = this.txns.requireActive(txId);
-    // BUG: skip X-lock
     tx.writes.set(key, value);
   }
 
@@ -61,20 +59,17 @@ export class TwoPl {
     this.store.apply(tx.writes);
     tx.writes.clear();
     tx.status = "committed";
-    // BUG: does not release locks / promote waiters
   }
 
   abort(txId: string): void {
     const tx = this.txns.get(txId);
     if (tx.status === "committed") throw new TxError("committed");
-    // BUG: applies buffered writes on abort
     this.store.apply(tx.writes);
     tx.writes.clear();
     this.releaseAll(txId);
     tx.status = "aborted";
   }
 
-  /** BUG: may return uncommitted buffered values from active txns. */
   get(key: string): string | undefined {
     for (const id of [`t1`, `t2`, `t3`, `t4`, `t5`, `t6`, `t7`, `t8`]) {
       try {
@@ -170,7 +165,6 @@ export class TwoPl {
     for (const key of touched) this.promote(key);
   }
 
-  /** BUG: may grant non-head waiters. */
   private promote(key: string): void {
     const q = this.waiters.queueOf(key);
     for (const w of [...q]) {

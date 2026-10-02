@@ -3,7 +3,6 @@ import type { TxnTable } from "./txn.js";
 import type { LockTable } from "./locktable.js";
 import { clearNode } from "./waitfor.js";
 
-/** Process expired waiters. BUG: does not abort / release. */
 export function processTimeouts(
   now: number,
   waiters: WaitQueue,

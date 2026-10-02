@@ -6,7 +6,6 @@ export class VirtualClock {
     return this.t;
   }
 
-  /** BUG: does not advance internal counter. */
   tick(): number {
     return this.t;
   }

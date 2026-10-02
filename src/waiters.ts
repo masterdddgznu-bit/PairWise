@@ -1,6 +1,5 @@
 import type { LockMode, Waiter } from "./types.js";
 
-/** BUG: LIFO instead of FIFO. */
 export class WaitQueue {
   private readonly byKey = new Map<string, Waiter[]>();
 
@@ -29,7 +28,6 @@ export class WaitQueue {
       const q = this.byKey.get(key) ?? [];
       const keep: Waiter[] = [];
       for (const w of q) {
-        // BUG: never treats equality as expired
         if (w.expireAt < now) expired.push(w);
         else keep.push(w);
       }
@@ -64,7 +62,6 @@ export class WaitQueue {
     return undefined;
   }
 
-  /** BUG: ignores earlier waiters — allows barge. */
   blocksNew(txId: string, key: string, _mode: LockMode): boolean {
     void txId;
     void key;
