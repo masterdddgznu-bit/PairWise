@@ -1,2 +1,6 @@
-export function predOf(_i: number, _n: number): number { return 0; }
-export function succOf(_i: number, _n: number): number { return 0; }
+export function predOf(i: number, n: number): number {
+  return (i - 1 + n) % n;
+}
+export function succOf(i: number, n: number): number {
+  return (i + 1) % n;
+}
