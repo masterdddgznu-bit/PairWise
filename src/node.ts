@@ -12,5 +12,5 @@ export class AvlNode {
 }
 
 export function allocateId(_nextId: number): number {
-  throw new Error("allocateId not implemented");
+  return _nextId;
 }
