@@ -1,15 +1,15 @@
 export function leftChild(_i: number): number {
-  throw new Error("leftChild not implemented");
+  return 2 * _i;
 }
 
 export function rightChild(_i: number): number {
-  throw new Error("rightChild not implemented");
+  return 2 * _i + 1;
 }
 
 export function parent(_i: number): number {
-  throw new Error("parent not implemented");
+  return Math.floor(_i / 2);
 }
 
 export function midSplit(_left: number, _right: number): number {
-  throw new Error("midSplit not implemented");
+  return Math.floor((_left + _right) / 2);
 }

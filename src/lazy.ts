@@ -1,11 +1,11 @@
 import type { SegArrays } from "./types.js";
 
 export function composeLazy(_existing: number, _delta: number): number {
-  throw new Error("composeLazy not implemented");
+  return _existing + _delta;
 }
 
 export function clearLazy(_lazy: number[], _idx: number): void {
-  throw new Error("clearLazy not implemented");
+  _lazy[_idx] = 0;
 }
 
 export function applyLazy(
@@ -15,5 +15,6 @@ export function applyLazy(
   _rightBound: number,
   _delta: number,
 ): void {
-  throw new Error("applyLazy not implemented");
+  _arrays.tree[_idx] = (_arrays.tree[_idx] ?? 0) + _delta * (_rightBound - _leftBound + 1);
+  _arrays.lazy[_idx] = composeLazy(_arrays.lazy[_idx] ?? 0, _delta);
 }
