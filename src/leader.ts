@@ -6,23 +6,26 @@ export function leaderAppend(rl: ReplicLog, payload: string): { index: number } 
   const opts = rl.getOpts();
   const leaderId = 0;
   const leader = rl.getReplicas()[leaderId]!;
+  const healthy = listHealthy(opts.n, rl.getHealth().down);
+  const need = requiredAcks(opts.n, opts.w);
+  if (rl.getHealth().isDown(leaderId) || healthy.length < need) {
+    throw new InsufficientReplicasError();
+  }
+
   const index = leader.lastIndex() + 1;
   leader.appendAt(index, payload);
 
-  const healthy = listHealthy(opts.n, rl.getHealth().down);
   const followers = healthy.filter((id) => id !== leaderId);
-  const target = followers[0];
-  if (target !== undefined) {
+  for (const target of followers.slice(0, need - 1)) {
     rl.getReplicas()[target]!.appendAt(index, payload);
   }
 
-  const need = requiredAcks(opts.n, opts.w);
   const acks = countWithEntry(healthy, (id, idx) => rl.getReplicas()[id]!.has(idx), index);
   if (acks < need) {
     throw new InsufficientReplicasError();
   }
 
-  rl.setCommitted(Math.max(rl.getCommitted(), index));
+  rl.setCommitted(recomputeCommitted(rl));
   return { index };
 }
 
@@ -33,7 +36,11 @@ export function recomputeCommitted(rl: ReplicLog): number {
   let max = 0;
   for (let i = 1; i <= rl.getReplicas()[0]!.lastIndex(); i++) {
     const acks = countWithEntry(healthy, (id, idx) => rl.getReplicas()[id]!.has(idx), i);
-    if (acks >= need) max = i;
+    if (acks >= need) {
+      max = i;
+    } else {
+      break;
+    }
   }
   return max;
 }

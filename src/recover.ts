@@ -18,5 +18,5 @@ export function importSnapshot(rl: ReplicLog, state: ReplicLogSnapshot): void {
     replicas[i]!.restore(state.logs[i] ?? []);
   }
   rl.setCommitted(state.committed);
-  rl.getHealth().restoreDown([]);
+  rl.getHealth().restoreDown(state.down);
 }

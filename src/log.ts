@@ -1,8 +1,8 @@
 import type { ReplicLogOptions, ReplicLogSnapshot } from "./types.js";
 import { Replica } from "./replica.js";
-import { ReplicaHealth } from "./heal.js";
+import { ReplicaHealth, catchUpReplica } from "./heal.js";
 import { validateWriteQuorum } from "./quorum.js";
-import { leaderAppend } from "./leader.js";
+import { leaderAppend, recomputeCommitted } from "./leader.js";
 import { truncateAfter as doTruncate } from "./truncate.js";
 import { exportSnapshot, importSnapshot } from "./recover.js";
 import { ReplicError } from "./errors.js";
@@ -27,19 +27,22 @@ export class ReplicLog {
 
   
   read(index: number): string | undefined {
-    if (index < 1) return undefined;
+    if (index < 1 || index > this.committedIndex) return undefined;
     return this.replicas[0]!.read(index);
   }
 
   failReplica(id: number): void {
     if (id < 0 || id >= this.opts.n) return;
     this.health.fail(id);
+    this.committedIndex = recomputeCommitted(this);
   }
 
   
   healReplica(id: number): void {
     if (id < 0 || id >= this.opts.n) return;
     this.health.heal(id);
+    catchUpReplica(this.replicas[id]!, this.replicas[0]!);
+    this.committedIndex = recomputeCommitted(this);
   }
 
   replicaLastIndex(id: number): number {
