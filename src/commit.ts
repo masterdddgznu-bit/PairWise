@@ -14,8 +14,7 @@ export function runCommit(
   journal: Journal,
   ssiEnabled: boolean,
 ): CommitResult {
-  const commitTs = txns.all().filter((t) => t.status === "committed").length + 1;
-  void clock;
+  const commitTs = clock.now() + 1;
 
   const ww = checkWriteWrite(tx, store);
   if (ww) {
@@ -32,6 +31,7 @@ export function runCommit(
     }
   }
 
+  clock.tick();
   for (const [key, value] of tx.writes) {
     store.put(key, { value, commitTs, txId: tx.id });
     journal.append(key, { value, commitTs, txId: tx.id });

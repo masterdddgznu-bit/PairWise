@@ -14,19 +14,13 @@ export class Journal {
     for (const { key, entry } of this.entries) {
       store.put(key, entry);
     }
-    for (const { key, entry } of this.entries) {
-      store.put(key, entry);
-    }
   }
 
-  snapshot(): VersionEntry[][] {
-    return this.entries.map((e) => [e.entry]);
+  snapshot(): Array<{ key: string; entry: VersionEntry }> {
+    return this.entries.map(({ key, entry }) => ({ key, entry: { ...entry } }));
   }
 
-  restore(rows: VersionEntry[][]): void {
-    this.entries = rows.map((row, i) => ({
-      key: `k${i}`,
-      entry: row[0]!,
-    }));
+  restore(rows: Array<{ key: string; entry: VersionEntry }>): void {
+    this.entries = rows.map(({ key, entry }) => ({ key, entry: { ...entry } }));
   }
 }

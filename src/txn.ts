@@ -1,6 +1,5 @@
 import { TxError } from "./errors.js";
 import type { TxRecord, TxStatus } from "./types.js";
-import type { CommittedStore } from "./store.js";
 
 export class TxnTable {
   private seq = 0;
@@ -11,12 +10,11 @@ export class TxnTable {
     const id = `t${this.seq}`;
     this.map.set(id, {
       id,
-      snapTs: 0,
+      snapTs,
       readSet: new Set(),
       writes: new Map(),
       status: "active",
     });
-    void snapTs;
     return id;
   }
 
@@ -32,16 +30,10 @@ export class TxnTable {
     return tx;
   }
 
-  abort(id: string, store: CommittedStore): void {
+  abort(id: string): void {
     const tx = this.get(id);
     if (tx.status === "committed") throw new TxError("committed");
-    for (const [key, value] of tx.writes) {
-      if (value === null) {
-        store.put(key, { value: null, commitTs: Date.now(), txId: id });
-      } else {
-        store.put(key, { value, commitTs: Date.now(), txId: id });
-      }
-    }
+    tx.writes.clear();
     tx.status = "aborted";
   }
 
@@ -50,7 +42,7 @@ export class TxnTable {
       (t) =>
         t.status === "committed" &&
         t.commitTs !== undefined &&
-        t.snapTs < t.commitTs &&
+        t.commitTs > snapTs &&
         t.commitTs < commitTs,
     );
   }

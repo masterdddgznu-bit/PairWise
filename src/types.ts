@@ -27,6 +27,6 @@ export type MvccSnapshot = {
   lastCommittedTs: number;
   versions: Record<string, VersionEntry[]>;
   txns: TxRecord[];
-  journal: VersionEntry[][];
+  journal: Array<{ key: string; entry: VersionEntry }>;
   ssi: boolean;
 };
