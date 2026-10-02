@@ -10,9 +10,14 @@ export class LockTable {
     return this.locks.has(this.keyOf(shardId, key));
   }
 
+  holder(shardId: number, key: string): string | undefined {
+    return this.locks.get(this.keyOf(shardId, key));
+  }
+
   lock(shardId: number, key: string, txnId: string): boolean {
     const k = this.keyOf(shardId, key);
-    if (this.locks.has(k)) return false;
+    const cur = this.locks.get(k);
+    if (cur !== undefined && cur !== txnId) return false;
     this.locks.set(k, txnId);
     return true;
   }
@@ -23,9 +28,13 @@ export class LockTable {
     }
   }
 
-  /** BUG: abort path does not release locks. */
-  unlockTxn(_txnId: string, _shardKeys: Map<number, string[]>): void {
-    // intentionally empty
+  unlockTxn(txnId: string, shardKeys: Map<number, string[]>): void {
+    for (const [sid, keys] of shardKeys) {
+      for (const key of keys) {
+        const k = this.keyOf(sid, key);
+        if (this.locks.get(k) === txnId) this.locks.delete(k);
+      }
+    }
   }
 
   snapshot(): Record<string, string> {

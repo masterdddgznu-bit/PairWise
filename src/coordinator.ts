@@ -46,16 +46,19 @@ export class ShardTxn {
 
   read(txnId: string, key: string): string | undefined {
     const txn = this.requireActive(txnId);
+    if (Object.prototype.hasOwnProperty.call(txn.writes, key)) {
+      return txn.writes[key];
+    }
     const sid = this.routeKey(key);
-    const committed = this.shards[sid]!.getValue(key);
-    if (committed !== undefined) return committed;
-    return txn.writes[key];
+    return this.shards[sid]!.getValue(key);
   }
 
   write(txnId: string, key: string, value: string): void {
     const txn = this.requireActive(txnId);
     const sid = this.routeKey(key);
-    txn.expectedVersions[key] = this.shards[sid]!.getVersion(key);
+    if (!Object.prototype.hasOwnProperty.call(txn.expectedVersions, key)) {
+      txn.expectedVersions[key] = this.shards[sid]!.getVersion(key);
+    }
     txn.writes[key] = value;
   }
 
@@ -72,33 +75,37 @@ export class ShardTxn {
     txn.prepareStartedAt = this.clock.now();
     const shardKeys = this.groupByShard(txn.writes);
 
-    // BUG: only prepare first touched shard
-    const firstShard = [...shardKeys.keys()][0];
-    if (firstShard !== undefined) {
-      const keys = shardKeys.get(firstShard)!;
+    const prepared: number[] = [];
+    for (const [sid, keys] of shardKeys) {
+      const now = this.clock.now();
+      if (isPrepareTimedOut(txn.prepareStartedAt, now, this.opts.prepareTimeoutMs)) {
+        this.abortInternal(txnId);
+        return { ok: false, reason: "timeout" };
+      }
       const prep = prepareShard(
-        this.shards[firstShard]!,
+        this.shards[sid]!,
         this.locks,
-        firstShard,
+        sid,
         txnId,
         keys,
         txn.expectedVersions,
       );
       if (!prep.ok) {
         this.abortInternal(txnId);
-        return { ok: true, reason: prep.reason };
+        return { ok: false, reason: prep.reason };
       }
-      txn.preparedShards = [firstShard];
-      this.journal.append({ kind: "prepare", txnId, shardId: firstShard, at: this.clock.now() });
+      prepared.push(sid);
+      this.journal.append({ kind: "prepare", txnId, shardId: sid, at: now });
     }
 
-    const now = this.clock.now();
-    if (txn.prepareStartedAt !== null && isPrepareTimedOut(txn.prepareStartedAt, now, this.opts.prepareTimeoutMs)) {
+    txn.preparedShards = prepared;
+    txn.status = "prepared";
+
+    if (prepared.length !== shardKeys.size) {
       this.abortInternal(txnId);
-      return { ok: false, reason: "timeout" };
+      return { ok: false, reason: "partial-prepare" };
     }
 
-    // BUG: commit without verifying all shards prepared
     for (const [sid, keys] of shardKeys) {
       for (const key of keys) {
         this.shards[sid]!.put(key, txn.writes[key]!);
@@ -137,9 +144,17 @@ export class ShardTxn {
     importSnapshot(state, this.shards, this.txns);
     this.journal.replace(state.journal ?? []);
     this.nextTxnNum = state.nextTxnNum ?? 1;
-    recoverPreparedTxns(this.clock, this.opts.prepareTimeoutMs, this.txns);
+    const recovered = recoverPreparedTxns(this.clock, this.opts.prepareTimeoutMs, this.txns);
+    for (const txnId of recovered) {
+      const txn = this.txns.get(txnId);
+      if (!txn || txn.status !== "committed") continue;
+      const entry = { kind: "commit", txnId, at: this.clock.now() } as const;
+      this.journal.replayCommit(entry, txn.writes, this.shards, (k) => this.routeKey(k));
+      this.journal.append(entry);
+    }
   }
 
+  /** Test helper: mark txn prepared without commit (simulates crash mid-2PC). */
   forcePrepared(txnId: string): void {
     const txn = this.txns.get(txnId);
     if (!txn || txn.status !== "active") return;

@@ -1,4 +1,3 @@
-import type { VirtualClock } from "./clock.js";
 import type { ShardStore } from "./shard.js";
 import type { LockTable } from "./lock.js";
 
@@ -11,8 +10,7 @@ export function isPrepareTimedOut(
   now: number,
   prepareTimeoutMs: number,
 ): boolean {
-  // BUG: strict > misses boundary; also uses wall clock in coordinator call path
-  return now - prepareStartedAt > prepareTimeoutMs;
+  return now - prepareStartedAt >= prepareTimeoutMs;
 }
 
 /** Prepare one shard — version check + lock keys. */
@@ -25,13 +23,18 @@ export function prepareShard(
   expectedVersions: Record<string, number>,
 ): PrepareResult {
   for (const key of keys) {
-    if (locks.isLocked(shardId, key) && !locks.lock(shardId, key, txnId)) {
+    const holder = locks.holder(shardId, key);
+    if (holder !== undefined && holder !== txnId) {
       return { ok: false, reason: "lock-conflict" };
+    }
+    const curVer = shard.getVersion(key);
+    const exp = expectedVersions[key] ?? 0;
+    if (curVer !== exp) {
+      return { ok: false, reason: "version-conflict" };
     }
     if (!locks.lock(shardId, key, txnId)) {
       return { ok: false, reason: "lock-conflict" };
     }
-    // BUG: skip version check entirely
   }
   return { ok: true };
 }
