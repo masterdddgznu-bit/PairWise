@@ -5,5 +5,6 @@ export class LProc {
   active = true;
   inMis = false;
   rank: number | null = null;
+  peerRanks = new Map<number, number>();
   constructor(id: number) { this.id = id; }
 }
