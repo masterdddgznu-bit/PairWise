@@ -4,5 +4,7 @@ export class MProc {
   inbox: Message[] = [];
   free = true;
   mate: number | null = null;
+  proposedThisRound = false;
+  proposedTo: number | null = null;
   constructor(id: number) { this.id = id; }
 }
