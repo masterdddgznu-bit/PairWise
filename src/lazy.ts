@@ -1,19 +1,20 @@
 import type { SegArrays } from "./types.js";
 
-export function composeLazy(_existing: number, _delta: number): number {
-  throw new Error("composeLazy not implemented");
+export function composeLazy(existing: number, delta: number): number {
+  return existing + delta;
 }
 
-export function clearLazy(_lazy: number[], _idx: number): void {
-  throw new Error("clearLazy not implemented");
+export function clearLazy(lazy: number[], idx: number): void {
+  lazy[idx] = 0;
 }
 
 export function applyLazy(
-  _arrays: SegArrays,
-  _idx: number,
-  _leftBound: number,
-  _rightBound: number,
-  _delta: number,
+  arrays: SegArrays,
+  idx: number,
+  leftBound: number,
+  rightBound: number,
+  delta: number,
 ): void {
-  throw new Error("applyLazy not implemented");
+  arrays.tree[idx] = arrays.tree[idx]! + delta * (rightBound - leftBound + 1);
+  arrays.lazy[idx] = composeLazy(arrays.lazy[idx]!, delta);
 }
