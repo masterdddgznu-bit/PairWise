@@ -1,7 +1,7 @@
 import type { ShardTxnSnapshot, TxnRecord } from "./types.js";
 import type { ShardStore } from "./shard.js";
-import type { LockTable } from "./lock.js";
 import type { VirtualClock } from "./clock.js";
+import { isPrepareTimedOut } from "./prepare.js";
 
 export function exportSnapshot(
   shards: ShardStore[],
@@ -17,7 +17,6 @@ export function exportSnapshot(
   };
 }
 
-/** BUG: import drops prepared txn metadata (status reset to active). */
 export function importSnapshot(
   snap: ShardTxnSnapshot,
   shards: ShardStore[],
@@ -32,18 +31,32 @@ export function importSnapshot(
   txns.clear();
   for (const t of snap.txns ?? []) {
     txns.set(t.txnId, {
-      ...t,
-      status: "active",
-      preparedShards: [],
-      prepareStartedAt: null,
+      txnId: t.txnId,
+      status: t.status,
+      writes: { ...t.writes },
+      expectedVersions: { ...t.expectedVersions },
+      prepareStartedAt: t.prepareStartedAt,
+      preparedShards: [...(t.preparedShards ?? [])],
     });
   }
 }
 
 export function recoverPreparedTxns(
-  _clock: VirtualClock,
-  _prepareTimeoutMs: number,
-  _txns: Map<string, TxnRecord>,
+  clock: VirtualClock,
+  prepareTimeoutMs: number,
+  txns: Map<string, TxnRecord>,
 ): string[] {
-  return [];
+  const finished: string[] = [];
+  const now = clock.now();
+  for (const txn of txns.values()) {
+    if (txn.status !== "prepared") continue;
+    const started = txn.prepareStartedAt ?? now;
+    if (isPrepareTimedOut(started, now, prepareTimeoutMs)) {
+      txn.status = "aborted";
+    } else {
+      txn.status = "committed";
+    }
+    finished.push(txn.txnId);
+  }
+  return finished;
 }
