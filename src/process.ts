@@ -6,5 +6,6 @@ export class AProc {
   blocked = false;
   marked = false;
   inbox: Message[] = [];
+  readonly marksSeen = new Set<number>();
   constructor(id: number) { this.id = id; }
 }
