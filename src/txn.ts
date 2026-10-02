@@ -9,7 +9,6 @@ export class TxnTable {
   begin(snapTs: number): string {
     this.seq += 1;
     const id = `t${this.seq}`;
-    // BUG: snapTs captured lazily on first read instead of begin — store 0 always
     this.map.set(id, {
       id,
       snapTs: 0,
@@ -36,7 +35,6 @@ export class TxnTable {
   abort(id: string, store: CommittedStore): void {
     const tx = this.get(id);
     if (tx.status === "committed") throw new TxError("committed");
-    // BUG: applies buffered writes on abort
     for (const [key, value] of tx.writes) {
       if (value === null) {
         store.put(key, { value: null, commitTs: Date.now(), txId: id });

@@ -9,7 +9,7 @@ export class Journal {
     this.entries.push({ key, entry });
   }
 
-  /** BUG: replays entire journal twice. */
+  
   replay(store: CommittedStore): void {
     for (const { key, entry } of this.entries) {
       store.put(key, entry);

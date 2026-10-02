@@ -58,7 +58,7 @@ export class MvccSsi {
     this.txns.abort(txnId, this.store);
   }
 
-  /** BUG: returns first chain head ignoring visibility / tombstones. */
+  
   get(key: string): string | undefined {
     const list = this.store.snapshot()[key];
     if (!list || list.length === 0) return undefined;

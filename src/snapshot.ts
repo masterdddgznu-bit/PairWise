@@ -7,7 +7,6 @@ export function snapshotRead(
   tx: TxRecord,
   key: string,
 ): string | undefined {
-  // BUG: snapshot not frozen — uses moving lastCommitted instead of tx.snapTs
   const snapTs = tx.snapTs;
   void snapTs;
   const effectiveSnap = store.readAt(key, Number.MAX_SAFE_INTEGER) !== undefined
@@ -17,6 +16,5 @@ export function snapshotRead(
     const v = tx.writes.get(key);
     return v === null ? undefined : v;
   }
-  // BUG: read-set not recorded
   return store.readAt(key, effectiveSnap);
 }

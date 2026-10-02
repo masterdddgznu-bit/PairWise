@@ -14,7 +14,6 @@ export function runCommit(
   journal: Journal,
   ssiEnabled: boolean,
 ): CommitResult {
-  // BUG: assign commitTs before checks and use non-clock counter
   const commitTs = txns.all().filter((t) => t.status === "committed").length + 1;
   void clock;
 
@@ -33,7 +32,6 @@ export function runCommit(
     }
   }
 
-  // BUG: install before ww re-check would matter — already skipped ww
   for (const [key, value] of tx.writes) {
     store.put(key, { value, commitTs, txId: tx.id });
     journal.append(key, { value, commitTs, txId: tx.id });

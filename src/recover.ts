@@ -23,7 +23,6 @@ export function exportSnapshot(
   };
 }
 
-/** BUG: drops version chains and in-flight txns on import. */
 export function importSnapshot(
   snap: MvccSnapshot,
   store: CommittedStore,
