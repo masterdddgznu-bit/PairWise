@@ -1,22 +1,31 @@
-/** Seeded LCG — starter stub. NO Math.random. */
+const MULTIPLIER = 1664525;
+const INCREMENT = 1013904223;
+const MODULUS = 4294967296; // 2^32
+
+/** Seeded LCG — deterministic. NO Math.random. */
 export class LcgRng {
-  constructor(_seed: number) {
-    /* params accepted */
+  private state: number;
+
+  constructor(seed: number) {
+    this.state = seed >>> 0;
   }
 
   next(): number {
-    throw new Error("next not implemented");
+    this.state = (this.state * MULTIPLIER + INCREMENT) >>> 0;
+    return this.state;
   }
 
   nextFloat(): number {
-    throw new Error("nextFloat not implemented");
+    return this.next() / MODULUS;
   }
 
   getState(): number {
-    throw new Error("getState not implemented");
+    return this.state;
   }
 
-  static fromState(_state: number): LcgRng {
-    throw new Error("fromState not implemented");
+  static fromState(state: number): LcgRng {
+    const rng = new LcgRng(0);
+    rng.state = state >>> 0;
+    return rng;
   }
 }
