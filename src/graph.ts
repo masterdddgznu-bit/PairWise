@@ -1,5 +1,52 @@
-export function defaultEdges(_n: number): number[][] { return []; }
-export function buildNeighbors(_n: number, _edges: number[][]): number[][] { return []; }
-export function isConnected(_n: number, _edges: number[][]): boolean { return false; }
-export function isSimpleUndirected(_n: number, _edges: number[][]): boolean { return false; }
-export function markModulus(_d: number): number { return 0; }
+export function defaultEdges(n: number): number[][] {
+  const edges: number[][] = [];
+  for (let i = 0; i + 1 < n; i += 1) edges.push([i, i + 1]);
+  return edges;
+}
+
+export function buildNeighbors(n: number, edges: number[][]): number[][] {
+  const adj: number[][] = Array.from({ length: n }, () => []);
+  for (const [u, v] of edges) {
+    adj[u].push(v);
+    adj[v].push(u);
+  }
+  for (const list of adj) list.sort((a, b) => a - b);
+  return adj;
+}
+
+export function isConnected(n: number, edges: number[][]): boolean {
+  if (n < 1) return false;
+  const adj = buildNeighbors(n, edges);
+  const seen = new Array<boolean>(n).fill(false);
+  const stack = [0];
+  seen[0] = true;
+  while (stack.length > 0) {
+    const u = stack.pop()!;
+    for (const v of adj[u]) {
+      if (!seen[v]) {
+        seen[v] = true;
+        stack.push(v);
+      }
+    }
+  }
+  return seen.every(Boolean);
+}
+
+export function isSimpleUndirected(n: number, edges: number[][]): boolean {
+  const seen = new Set<string>();
+  for (const e of edges) {
+    if (!Array.isArray(e) || e.length !== 2) return false;
+    const [u, v] = e;
+    if (!Number.isInteger(u) || !Number.isInteger(v)) return false;
+    if (u < 0 || u >= n || v < 0 || v >= n) return false;
+    if (u === v) return false;
+    const key = u < v ? `${u},${v}` : `${v},${u}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+  }
+  return true;
+}
+
+export function markModulus(d: number): number {
+  return Math.max(2 * d, 1);
+}
