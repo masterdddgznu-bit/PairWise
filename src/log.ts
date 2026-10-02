@@ -25,7 +25,7 @@ export class ReplicLog {
     return this.committedIndex;
   }
 
-  /** BUG: ignores committed bound — reads any present entry on leader. */
+  
   read(index: number): string | undefined {
     if (index < 1) return undefined;
     return this.replicas[0]!.read(index);
@@ -36,7 +36,7 @@ export class ReplicLog {
     this.health.fail(id);
   }
 
-  /** BUG: heal does not catch up lagging follower from leader. */
+  
   healReplica(id: number): void {
     if (id < 0 || id >= this.opts.n) return;
     this.health.heal(id);

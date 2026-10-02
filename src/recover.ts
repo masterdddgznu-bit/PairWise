@@ -12,7 +12,6 @@ export function exportSnapshot(rl: ReplicLog): ReplicLogSnapshot {
   };
 }
 
-/** BUG: import drops down set. */
 export function importSnapshot(rl: ReplicLog, state: ReplicLogSnapshot): void {
   const replicas = rl.getReplicas();
   for (let i = 0; i < replicas.length; i++) {

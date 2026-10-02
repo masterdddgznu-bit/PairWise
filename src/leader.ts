@@ -2,7 +2,6 @@ import type { ReplicLog } from "./log.js";
 import { listHealthy, requiredAcks, countWithEntry } from "./quorum.js";
 import { InsufficientReplicasError } from "./errors.js";
 
-/** BUG: replicate only to one follower (not w-1 followers). */
 export function leaderAppend(rl: ReplicLog, payload: string): { index: number } {
   const opts = rl.getOpts();
   const leaderId = 0;
@@ -27,7 +26,6 @@ export function leaderAppend(rl: ReplicLog, payload: string): { index: number } 
   return { index };
 }
 
-/** BUG: allows gaps — returns max index with any quorum instead of contiguous prefix. */
 export function recomputeCommitted(rl: ReplicLog): number {
   const opts = rl.getOpts();
   const healthy = listHealthy(opts.n, rl.getHealth().down);
