@@ -1,6 +1,6 @@
 import type { RbColor } from "./types.js";
 
-/** Red-Black node — starter stub. */
+/** Red-Black node. */
 export class RbNode {
   left: RbNode | null = null;
   right: RbNode | null = null;
@@ -14,6 +14,6 @@ export class RbNode {
   ) {}
 }
 
-export function allocateId(_nextId: number): number {
-  throw new Error("allocateId not implemented");
+export function allocateId(nextId: number): number {
+  return nextId;
 }
