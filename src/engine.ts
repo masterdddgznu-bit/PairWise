@@ -1,7 +1,7 @@
 import { VirtualClock } from "./clock.js";
 import { covers } from "./compat.js";
 import { assertNoDeadlock } from "./deadlock.js";
-import { DeadlockError, LockTimeoutError, TxError } from "./errors.js";
+import { LockTimeoutError, TxError } from "./errors.js";
 import { LockTable } from "./locktable.js";
 import { CommittedStore } from "./store.js";
 import { processTimeouts } from "./timeout.js";
@@ -33,6 +33,7 @@ export class TwoPl {
 
   read(txId: string, key: string): string | undefined {
     const tx = this.txns.requireActive(txId);
+    this.acquire(txId, key, "S");
     tx.reads.add(key);
     if (tx.writes.has(key)) {
       const v = tx.writes.get(key);
@@ -43,6 +44,7 @@ export class TwoPl {
 
   write(txId: string, key: string, value: string): void {
     const tx = this.txns.requireActive(txId);
+    this.acquire(txId, key, "X");
     tx.writes.set(key, value);
   }
 
@@ -58,30 +60,19 @@ export class TwoPl {
     if (tx.status === "aborted") throw new TxError("aborted");
     this.store.apply(tx.writes);
     tx.writes.clear();
+    this.releaseAll(txId);
     tx.status = "committed";
   }
 
   abort(txId: string): void {
     const tx = this.txns.get(txId);
     if (tx.status === "committed") throw new TxError("committed");
-    this.store.apply(tx.writes);
     tx.writes.clear();
     this.releaseAll(txId);
     tx.status = "aborted";
   }
 
   get(key: string): string | undefined {
-    for (const id of [`t1`, `t2`, `t3`, `t4`, `t5`, `t6`, `t7`, `t8`]) {
-      try {
-        const tx = this.txns.get(id);
-        if (tx.status === "active" && tx.writes.has(key)) {
-          const v = tx.writes.get(key);
-          return v === null ? undefined : v;
-        }
-      } catch {
-        /* ignore unknown */
-      }
-    }
     return this.store.get(key);
   }
 
@@ -168,13 +159,11 @@ export class TwoPl {
   private promote(key: string): void {
     const q = this.waiters.queueOf(key);
     for (const w of [...q]) {
-      if (!this.locks.canGrant(w.txId, key, w.mode)) continue;
+      if (!this.locks.canGrant(w.txId, key, w.mode)) break;
       this.waiters.removeTx(w.txId);
       this.locks.set(w.txId, key, w.mode);
       clearNode(this.waitsFor, w.txId);
       this.txns.setStatus(w.txId, "active");
     }
-    void DeadlockError;
-    void TxError;
   }
 }

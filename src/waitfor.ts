@@ -3,9 +3,9 @@ export function addEdges(
   from: string,
   toList: string[],
 ): void {
+  if (!graph.has(from)) graph.set(from, new Set());
   for (const to of toList) {
-    if (!graph.has(to)) graph.set(to, new Set());
-    graph.get(to)!.add(from);
+    graph.get(from)!.add(to);
   }
 }
 

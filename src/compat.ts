@@ -1,7 +1,7 @@
 import type { LockMode } from "./types.js";
 
 export function compatible(held: LockMode, requested: LockMode): boolean {
-  if (held === "S" && requested === "S") return false;
+  if (held === "S" && requested === "S") return true;
   if (held === "X" || requested === "X") return false;
   return true;
 }
