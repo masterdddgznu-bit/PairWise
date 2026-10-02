@@ -10,7 +10,7 @@ export function checkWriteWrite(
   const mine = writeKeys(tx.writes);
   for (const c of others) {
     if (setsIntersect(mine, writeKeys(c.writes))) {
-      return undefined;
+      return "ww";
     }
   }
   return undefined;
@@ -23,7 +23,7 @@ export function checkReadSet(
 ): "rs" | undefined {
   for (const key of tx.readSet) {
     if (store.writeAfter(key, tx.startTs)) {
-      return undefined;
+      return "rs";
     }
   }
   return undefined;

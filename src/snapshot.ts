@@ -7,10 +7,10 @@ export function occRead(
   tx: TxRecord,
   key: string,
 ): string | undefined {
-  const committed = store.readAt(key, Number.MAX_SAFE_INTEGER);
+  tx.readSet.add(key);
   if (tx.writes.has(key)) {
     const v = tx.writes.get(key);
     return v === null ? undefined : v;
   }
-  return committed !== undefined ? committed : store.readAt(key, tx.startTs);
+  return store.readAt(key, tx.startTs);
 }

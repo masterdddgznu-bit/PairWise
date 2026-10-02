@@ -13,9 +13,6 @@ export class Journal {
     for (const { key, entry } of this.entries) {
       store.put(key, entry);
     }
-    for (const { key, entry } of this.entries) {
-      store.put(key, entry);
-    }
   }
 
   snapshot(): Array<{ key: string; entry: VersionEntry }> {
