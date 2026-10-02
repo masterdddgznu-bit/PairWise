@@ -14,14 +14,13 @@ export function runCommit(
   journal: Journal,
   ssiEnabled: boolean,
 ): CommitResult {
-  const commitTs = txns.all().filter((t) => t.status === "committed").length + 1;
-  void clock;
-
   const ww = checkWriteWrite(tx, store);
   if (ww) {
     tx.status = "aborted";
     return { ok: false, reason: ww };
   }
+
+  const commitTs = clock.tick();
 
   if (ssiEnabled) {
     const others = txns.committedBetween(tx.snapTs, commitTs);
@@ -33,8 +32,9 @@ export function runCommit(
   }
 
   for (const [key, value] of tx.writes) {
-    store.put(key, { value, commitTs, txId: tx.id });
-    journal.append(key, { value, commitTs, txId: tx.id });
+    const entry = { value, commitTs, txId: tx.id };
+    store.put(key, entry);
+    journal.append(key, entry);
   }
 
   tx.commitTs = commitTs;

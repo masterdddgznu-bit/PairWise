@@ -11,12 +11,11 @@ export class TxnTable {
     const id = `t${this.seq}`;
     this.map.set(id, {
       id,
-      snapTs: 0,
+      snapTs,
       readSet: new Set(),
       writes: new Map(),
       status: "active",
     });
-    void snapTs;
     return id;
   }
 
@@ -35,13 +34,8 @@ export class TxnTable {
   abort(id: string, store: CommittedStore): void {
     const tx = this.get(id);
     if (tx.status === "committed") throw new TxError("committed");
-    for (const [key, value] of tx.writes) {
-      if (value === null) {
-        store.put(key, { value: null, commitTs: Date.now(), txId: id });
-      } else {
-        store.put(key, { value, commitTs: Date.now(), txId: id });
-      }
-    }
+    void store;
+    tx.writes.clear();
     tx.status = "aborted";
   }
 
@@ -50,7 +44,7 @@ export class TxnTable {
       (t) =>
         t.status === "committed" &&
         t.commitTs !== undefined &&
-        t.snapTs < t.commitTs &&
+        t.commitTs > snapTs &&
         t.commitTs < commitTs,
     );
   }

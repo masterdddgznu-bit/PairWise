@@ -29,9 +29,8 @@ export function importSnapshot(
   txns: TxnTable,
   journal: Journal,
 ): number {
-  store.restore({});
-  txns.restore([]);
-  journal.restore([]);
-  void snap;
-  return 0;
+  store.restore(snap.versions);
+  txns.restore(snap.txns);
+  journal.restore(snap.journal);
+  return snap.lastCommittedTs;
 }

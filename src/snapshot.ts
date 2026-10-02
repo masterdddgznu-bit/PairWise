@@ -7,14 +7,10 @@ export function snapshotRead(
   tx: TxRecord,
   key: string,
 ): string | undefined {
-  const snapTs = tx.snapTs;
-  void snapTs;
-  const effectiveSnap = store.readAt(key, Number.MAX_SAFE_INTEGER) !== undefined
-    ? Number.MAX_SAFE_INTEGER
-    : tx.snapTs;
+  tx.readSet.add(key);
   if (tx.writes.has(key)) {
     const v = tx.writes.get(key);
     return v === null ? undefined : v;
   }
-  return store.readAt(key, effectiveSnap);
+  return store.readAt(key, tx.snapTs);
 }

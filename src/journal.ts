@@ -1,32 +1,30 @@
 import type { VersionEntry } from "./types.js";
 import type { CommittedStore } from "./store.js";
 
+export type JournalRow = { key: string; entry: VersionEntry };
+
 /** Append-only commit journal for recovery. */
 export class Journal {
-  private entries: Array<{ key: string; entry: VersionEntry }> = [];
+  private entries: JournalRow[] = [];
 
   append(key: string, entry: VersionEntry): void {
     this.entries.push({ key, entry });
   }
 
-  
   replay(store: CommittedStore): void {
     for (const { key, entry } of this.entries) {
       store.put(key, entry);
     }
-    for (const { key, entry } of this.entries) {
-      store.put(key, entry);
-    }
   }
 
-  snapshot(): VersionEntry[][] {
-    return this.entries.map((e) => [e.entry]);
+  snapshot(): JournalRow[] {
+    return this.entries.map((e) => ({ key: e.key, entry: { ...e.entry } }));
   }
 
-  restore(rows: VersionEntry[][]): void {
-    this.entries = rows.map((row, i) => ({
-      key: `k${i}`,
-      entry: row[0]!,
+  restore(rows: JournalRow[]): void {
+    this.entries = rows.map((row) => ({
+      key: row.key,
+      entry: { ...row.entry },
     }));
   }
 }

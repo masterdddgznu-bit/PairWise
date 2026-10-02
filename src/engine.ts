@@ -60,9 +60,7 @@ export class MvccSsi {
 
   
   get(key: string): string | undefined {
-    const list = this.store.snapshot()[key];
-    if (!list || list.length === 0) return undefined;
-    return list[0]!.value === null ? undefined : list[0]!.value;
+    return this.store.latest(key);
   }
 
   lastCommitTs(): number {
@@ -85,7 +83,7 @@ export class MvccSsi {
 
   importState(state: MvccSnapshot): void {
     this.lastCommittedTs = importSnapshot(state, this.store, this.txns, this.journal);
-    this.journal.replay(this.store);
+    this.clock.advanceTo(this.lastCommittedTs);
   }
 
   /** test helper */
