@@ -1,10 +1,16 @@
 import type { Message, VectorClock } from "./types.js";
 
 export function canDeliver(
-  _m: Message,
-  _local: VectorClock,
+  m: Message,
+  local: VectorClock,
 ): boolean {
-  return false;
+  if (m.vc[m.sender] !== local[m.sender] + 1) return false;
+  for (const k of Object.keys(local)) {
+    if (k !== m.sender && m.vc[k] > local[k]) return false;
+  }
+  return true;
 }
 
-export function applyDeliver(_local: VectorClock, _m: Message): void {}
+export function applyDeliver(local: VectorClock, m: Message): void {
+  local[m.sender] = m.vc[m.sender];
+}
