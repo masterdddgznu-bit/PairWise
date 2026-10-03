@@ -1,15 +1,29 @@
+import { UnknownOwnerError } from "./errors.js";
+
 export class OwnerBook {
-  constructor(_ownerIds: string[]) {}
-  has(_id: string): boolean {
-    return false;
+  private readonly sortedIds: string[];
+  private readonly fences = new Map<string, number>();
+
+  constructor(ownerIds: string[]) {
+    this.sortedIds = [...ownerIds].sort();
+    for (const id of this.sortedIds) {
+      this.fences.set(id, 1);
+    }
   }
-  fenceOf(_id: string): number {
-    return 0;
+  has(id: string): boolean {
+    return this.fences.has(id);
   }
-  bump(_id: string): number {
-    return 0;
+  fenceOf(id: string): number {
+    const fence = this.fences.get(id);
+    if (fence === undefined) throw new UnknownOwnerError(`unknown owner: ${id}`);
+    return fence;
+  }
+  bump(id: string): number {
+    const next = this.fenceOf(id) + 1;
+    this.fences.set(id, next);
+    return next;
   }
   ids(): string[] {
-    return [];
+    return [...this.sortedIds];
   }
 }

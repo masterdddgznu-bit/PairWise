@@ -1,37 +1,96 @@
 import type { HandoffView } from "./types.js";
+import { HandoffError } from "./errors.js";
+
+export type HandoffRecord = {
+  moveId: string;
+  vnode: number;
+  from: string;
+  to: string;
+  phase: "proposed" | "prepared";
+  deadline: number | null;
+};
 
 export class HandoffBook {
+  private readonly byId = new Map<string, HandoffRecord>();
+  private readonly byVNode = new Map<number, string>();
+  private seq = 0;
+
   propose(
-    _vnode: number,
-    _from: string,
-    _to: string,
-    _deadline: number | null,
+    vnode: number,
+    from: string,
+    to: string,
+    deadline: number | null,
   ): string {
-    return "";
+    if (this.byVNode.has(vnode)) {
+      throw new HandoffError(`vnode ${vnode} already has an active handoff`);
+    }
+    this.seq += 1;
+    const moveId = `move-${this.seq}`;
+    const record: HandoffRecord = {
+      moveId,
+      vnode,
+      from,
+      to,
+      phase: "proposed",
+      deadline,
+    };
+    this.byId.set(moveId, record);
+    this.byVNode.set(vnode, moveId);
+    return moveId;
   }
-  prepare(_moveId: string): void {}
-  commit(_moveId: string): {
+  private mustGet(moveId: string): HandoffRecord {
+    const record = this.byId.get(moveId);
+    if (!record) throw new HandoffError(`unknown moveId: ${moveId}`);
+    return record;
+  }
+  prepare(moveId: string): HandoffRecord {
+    const record = this.mustGet(moveId);
+    if (record.phase !== "proposed") {
+      throw new HandoffError(`handoff ${moveId} is not in proposed phase`);
+    }
+    record.phase = "prepared";
+    return record;
+  }
+  commit(moveId: string): {
     vnode: number;
     from: string;
     to: string;
   } {
-    return { vnode: 0, from: "", to: "" };
+    const record = this.mustGet(moveId);
+    this.byId.delete(moveId);
+    this.byVNode.delete(record.vnode);
+    return { vnode: record.vnode, from: record.from, to: record.to };
   }
-  abort(_moveId: string): { vnode: number } {
-    return { vnode: 0 };
+  abort(moveId: string): { vnode: number } {
+    const record = this.mustGet(moveId);
+    this.byId.delete(moveId);
+    this.byVNode.delete(record.vnode);
+    return { vnode: record.vnode };
   }
-  view(_vnode: number): HandoffView | undefined {
-    return undefined;
+  view(vnode: number): HandoffView | undefined {
+    const moveId = this.byVNode.get(vnode);
+    if (moveId === undefined) return undefined;
+    const record = this.byId.get(moveId)!;
+    return {
+      moveId: record.moveId,
+      from: record.from,
+      to: record.to,
+      phase: record.phase,
+    };
   }
-  get(_moveId: string):
-    | { vnode: number; from: string; to: string; phase: string; deadline: number | null }
-    | undefined {
-    return undefined;
+  get(moveId: string): HandoffRecord | undefined {
+    return this.byId.get(moveId);
   }
-  expired(_now: number): string[] {
-    return [];
+  expired(now: number): string[] {
+    const out: string[] = [];
+    for (const record of this.byId.values()) {
+      if (record.deadline !== null && now >= record.deadline) {
+        out.push(record.moveId);
+      }
+    }
+    return out.sort();
   }
-  activeVNode(_vnode: number): boolean {
-    return false;
+  activeVNode(vnode: number): boolean {
+    return this.byVNode.has(vnode);
   }
 }
