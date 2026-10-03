@@ -45,7 +45,10 @@ export class SessWin {
 
   ingest(key: string, eventTime: number, value: number): void {
     this.observe(eventTime);
-    // starter: tumbling path ignores late-vs-watermark drop
+    if (eventTime < this.wm.value()) {
+      this.late.push({ key, eventTime, value });
+      return;
+    }
     if (this.mode === "tumbling") {
       this.tumbling!.ingest(key, eventTime, value);
       return;
@@ -72,7 +75,7 @@ export class SessWin {
       mode: this.mode,
       watermark: this.wm.exportState(),
       tumbling: this.tumbling ? this.tumbling.exportState() : undefined,
-      session: undefined,
+      session: this.session ? this.session.exportState() : undefined,
       late: this.late.exportState(),
     };
   }
@@ -81,6 +84,7 @@ export class SessWin {
     if (state.mode !== this.mode) throw new InvalidConfigError("mode mismatch");
     this.wm.importState(state.watermark);
     if (this.tumbling && state.tumbling !== undefined) this.tumbling.importState(state.tumbling);
+    if (this.session && state.session !== undefined) this.session.importState(state.session);
     this.late.importState(state.late as LateEvent[]);
   }
 }
