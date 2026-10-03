@@ -7,11 +7,31 @@ export function splitTopic(topic: string): string[] {
   return parts;
 }
 
-/** Exact-only in starter; patterns not implemented. */
 export function matches(pattern: string, topic: string): boolean {
-  return pattern === topic;
+  const pp = pattern.split(".");
+  const tp = topic.split(".");
+  let i = 0;
+  for (; i < pp.length; i++) {
+    const seg = pp[i]!;
+    if (seg === "#") return true;
+    if (i >= tp.length) return false;
+    if (seg === "*") continue;
+    if (seg !== tp[i]) return false;
+  }
+  return i === tp.length;
 }
 
-export function assertPattern(_pattern: string): void {
-  splitTopic(_pattern);
+export function assertPattern(pattern: string): void {
+  const parts = splitTopic(pattern);
+  for (let i = 0; i < parts.length; i++) {
+    const seg = parts[i]!;
+    if (seg.includes("#")) {
+      if (seg !== "#" || i !== parts.length - 1) {
+        throw new InvalidTopicError("hash position");
+      }
+    }
+    if (seg.includes("*") && seg !== "*") {
+      throw new InvalidTopicError("star segment");
+    }
+  }
 }
