@@ -6,7 +6,7 @@ export class WheelIndex {
   ) {}
 
   slotsFromTtl(ttlMs: number): number {
-    return Math.floor(ttlMs / this.tickMs);
+    return Math.ceil(ttlMs / this.tickMs);
   }
 
   targetSlot(hand: number, ttlMs: number): number {

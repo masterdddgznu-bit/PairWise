@@ -37,6 +37,7 @@ export class LeaseWheel<T = string> {
     const expireAt = this.clock.now() + ttlMs;
     const slot = this.index.targetSlot(this.hand, ttlMs);
     const lease = { leaseId, payload, expireAt, slot };
+    this.slots.remove(leaseId);
     this.book.set(lease);
     this.slots.place(slot, lease);
   }
@@ -44,6 +45,7 @@ export class LeaseWheel<T = string> {
   cancel(leaseId: string): boolean {
     if (!this.book.has(leaseId)) return false;
     this.book.delete(leaseId);
+    this.slots.remove(leaseId);
     return true;
   }
 
@@ -58,18 +60,22 @@ export class LeaseWheel<T = string> {
     let ticks = Math.floor(delta / this.tickMs);
     this.remainder = delta % this.tickMs;
     while (ticks > 0) {
+      this.hand = (this.hand + 1) % this.slotCount;
       const got = this.slots.takeSlot(this.hand);
       for (const lease of got) {
-        if (!this.book.has(lease.leaseId)) continue;
-        const cur = this.book.get(lease.leaseId)!;
+        const cur = this.book.get(lease.leaseId);
+        if (!cur || cur.expireAt !== lease.expireAt) continue;
+        if (cur.expireAt > now) {
+          this.slots.place(cur.slot, cur);
+          continue;
+        }
         this.book.delete(lease.leaseId);
         this.book.pushExpired({
-          leaseId: lease.leaseId,
-          payload: lease.payload,
-          expireAt: lease.expireAt,
+          leaseId: cur.leaseId,
+          payload: cur.payload,
+          expireAt: cur.expireAt,
         });
       }
-      this.hand = (this.hand + 1) % this.slotCount;
       ticks -= 1;
     }
   }
