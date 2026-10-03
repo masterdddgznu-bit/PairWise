@@ -1,10 +1,24 @@
+import { InvalidWatermarkError } from "./errors.js";
+
 export class WatermarkTrack {
+  private wm = Number.NEGATIVE_INFINITY;
+
   current(): number {
-    return Number.NEGATIVE_INFINITY;
+    return this.wm;
   }
-  raise(_wm: number): void {}
+  raise(wm: number): void {
+    if (typeof wm !== "number" || !Number.isFinite(wm)) {
+      throw new InvalidWatermarkError("watermark must be a finite number");
+    }
+    if (wm < this.wm) {
+      throw new InvalidWatermarkError("watermark cannot move backwards");
+    }
+    this.wm = wm;
+  }
   exportAll(): number {
-    return Number.NEGATIVE_INFINITY;
+    return this.wm;
   }
-  importAll(_wm: number): void {}
+  importAll(wm: number): void {
+    this.wm = wm;
+  }
 }
