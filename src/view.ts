@@ -1,7 +1,26 @@
+import { InvalidViewError } from "./errors.js";
+
 export class ViewState {
-  constructor(_start: number) {}
-  current(): number {
-    return 1;
+  private view: number;
+
+  constructor(start: number) {
+    this.view = start;
   }
-  change(_newView: number): void {}
+
+  current(): number {
+    return this.view;
+  }
+
+  change(newView: number): void {
+    if (!Number.isInteger(newView) || newView <= this.view) {
+      throw new InvalidViewError(
+        `view must be an integer greater than ${this.view}, got ${newView}`,
+      );
+    }
+    this.view = newView;
+  }
+
+  restore(view: number): void {
+    this.view = view;
+  }
 }
