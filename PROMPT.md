@@ -6,6 +6,7 @@
 
 - `VirtualClock`：`now()` / `advance(ms)`（`ms < 0` 抛错）
 - `RetryBag`：主入口类
+- `backoffMs(baseBackoffMs, backoffCapMs, attempt): number`：实现上方退避公式（供单测直接校验）
 - 错误类：`RetryBagError`，以及至少  
   `InvalidConfigError` / `InvalidJobError` / `UnknownTicketError` / `FenceError`
 
