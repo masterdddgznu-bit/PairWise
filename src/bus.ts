@@ -1,5 +1,5 @@
 import { VirtualClock } from "./clock.js";
-import { FeatureNotReadyError, InvalidConfigError } from "./errors.js";
+import { InvalidConfigError } from "./errors.js";
 import { InboxBook } from "./inbox.js";
 import { InflightBook } from "./inflight.js";
 import { EventLog } from "./log.js";
@@ -50,13 +50,16 @@ export class WatchBus {
   subscribePattern(pattern: string, consumerId: string): void {
     assertPattern(pattern);
     if (!consumerId) throw new InvalidConfigError("consumer");
-    throw new FeatureNotReadyError("subscribePattern");
+    let set = this.patterns.get(pattern);
+    if (!set) {
+      set = new Set();
+      this.patterns.set(pattern, set);
+    }
+    set.add(consumerId);
   }
 
   unsubscribePattern(pattern: string, consumerId: string): void {
-    void pattern;
-    void consumerId;
-    throw new FeatureNotReadyError("unsubscribePattern");
+    this.patterns.get(pattern)?.delete(consumerId);
   }
 
   private recipients(topic: string): string[] {
@@ -96,9 +99,26 @@ export class WatchBus {
   }
 
   replay(consumerId: string, fromSeq: number): number {
-    void consumerId;
-    void fromSeq;
-    throw new FeatureNotReadyError("replay");
+    let count = 0;
+    for (const rec of this.log.from(fromSeq)) {
+      if (!this.subscribed(consumerId, rec.topic)) continue;
+      this.inbox.push(consumerId, {
+        seq: rec.seq,
+        topic: rec.topic,
+        payload: rec.payload,
+        redelivery: false,
+      });
+      count++;
+    }
+    return count;
+  }
+
+  private subscribed(consumerId: string, topic: string): boolean {
+    if (this.exact.get(topic)?.has(consumerId)) return true;
+    for (const [pat, set] of this.patterns) {
+      if (set.has(consumerId) && matches(pat, topic)) return true;
+    }
+    return false;
   }
 
   ack(consumerId: string, seq: number): boolean {

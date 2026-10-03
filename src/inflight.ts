@@ -1,38 +1,77 @@
-import { FeatureNotReadyError } from "./errors.js";
+type InflightEntry = {
+  consumerId: string;
+  seq: number;
+  topic: string;
+  payload: string;
+  deliveredAt: number;
+};
 
 export class InflightBook {
-  track(
-    _consumerId: string,
-    _seq: number,
-    _topic: string,
-    _payload: string,
-    _deliveredAt: number,
-  ): void {
-    /* base path ignores inflight */
+  private readonly entries = new Map<string, InflightEntry>();
+
+  private static key(consumerId: string, seq: number): string {
+    return `${consumerId}${seq}`;
   }
 
-  ack(_consumerId: string, _seq: number): boolean {
-    throw new FeatureNotReadyError("ack");
+  track(
+    consumerId: string,
+    seq: number,
+    topic: string,
+    payload: string,
+    deliveredAt: number,
+  ): void {
+    this.entries.set(InflightBook.key(consumerId, seq), {
+      consumerId,
+      seq,
+      topic,
+      payload,
+      deliveredAt,
+    });
+  }
+
+  ack(consumerId: string, seq: number): boolean {
+    return this.entries.delete(InflightBook.key(consumerId, seq));
   }
 
   nack(
-    _consumerId: string,
-    _seq: number,
-    _now: number,
+    consumerId: string,
+    seq: number,
+    now: number,
   ): { topic: string; payload: string } | null {
-    throw new FeatureNotReadyError("nack");
+    const entry = this.entries.get(InflightBook.key(consumerId, seq));
+    if (!entry) return null;
+    entry.deliveredAt = now;
+    return { topic: entry.topic, payload: entry.payload };
   }
 
-  due(_now: number, _ackTimeoutMs: number): Array<{
+  due(now: number, ackTimeoutMs: number): Array<{
     consumerId: string;
     seq: number;
     topic: string;
     payload: string;
   }> {
-    throw new FeatureNotReadyError("drive");
+    const out: Array<{
+      consumerId: string;
+      seq: number;
+      topic: string;
+      payload: string;
+    }> = [];
+    for (const entry of this.entries.values()) {
+      if (now >= entry.deliveredAt + ackTimeoutMs) {
+        out.push({
+          consumerId: entry.consumerId,
+          seq: entry.seq,
+          topic: entry.topic,
+          payload: entry.payload,
+        });
+      }
+    }
+    out.sort((a, b) => a.seq - b.seq);
+    return out;
   }
 
-  refresh(_consumerId: string, _seq: number, _now: number): void {
-    throw new FeatureNotReadyError("refresh");
+  refresh(consumerId: string, seq: number, now: number): void {
+    const entry = this.entries.get(InflightBook.key(consumerId, seq));
+    if (entry) entry.deliveredAt = now;
   }
 }
