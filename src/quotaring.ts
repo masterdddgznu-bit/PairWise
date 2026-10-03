@@ -40,6 +40,9 @@ export class QuotaRing {
       return { ok: false, reason: "ttl" };
     }
 
+    if (this.ledger.has(ticketId)) {
+      this.release(ticketId);
+    }
     if (!this.tree.canFit(this.buckets, nodeId, amount)) {
       return { ok: false, reason: "hard" };
     }
