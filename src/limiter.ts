@@ -1,9 +1,42 @@
 export class ConcurrencyLimiter {
-  constructor(_globalLimit: number, _maxPerTenant: Map<string, number>) {}
-  runningGlobal(): number { return 0; }
-  runningOf(_tenantId: string): number { return 0; }
-  canStart(_tenantId: string): boolean { return false; }
-  acquire(_tenantId: string): void { /* stub */ }
-  release(_tenantId: string): void { /* stub */ }
-  reset(): void { /* stub */ }
+  private readonly globalLimit: number;
+  private readonly maxPerTenant: Map<string, number>;
+  private readonly perTenant = new Map<string, number>();
+  private global = 0;
+
+  constructor(globalLimit: number, maxPerTenant: Map<string, number>) {
+    this.globalLimit = globalLimit;
+    this.maxPerTenant = new Map(maxPerTenant);
+    for (const id of this.maxPerTenant.keys()) this.perTenant.set(id, 0);
+  }
+
+  runningGlobal(): number {
+    return this.global;
+  }
+
+  runningOf(tenantId: string): number {
+    return this.perTenant.get(tenantId) ?? 0;
+  }
+
+  canStart(tenantId: string): boolean {
+    return (
+      this.global < this.globalLimit &&
+      this.runningOf(tenantId) < (this.maxPerTenant.get(tenantId) ?? 0)
+    );
+  }
+
+  acquire(tenantId: string): void {
+    this.global += 1;
+    this.perTenant.set(tenantId, this.runningOf(tenantId) + 1);
+  }
+
+  release(tenantId: string): void {
+    this.global -= 1;
+    this.perTenant.set(tenantId, this.runningOf(tenantId) - 1);
+  }
+
+  reset(): void {
+    this.global = 0;
+    for (const id of this.perTenant.keys()) this.perTenant.set(id, 0);
+  }
 }
