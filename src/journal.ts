@@ -10,17 +10,41 @@ export type JournalRecord = {
   commitDeadline: number | null;
 };
 
+function copyRecord(rec: JournalRecord): JournalRecord {
+  const keys: Record<string, string[]> = {};
+  for (const [pid, ks] of Object.entries(rec.keys)) keys[pid] = [...ks];
+  return {
+    txnId: rec.txnId,
+    phase: rec.phase,
+    participants: [...rec.participants],
+    keys,
+    decision: rec.decision,
+    prepareDeadline: rec.prepareDeadline,
+    commitDeadline: rec.commitDeadline,
+  };
+}
+
 export class Journal {
-  upsert(_rec: JournalRecord): void {}
-  get(_txnId: string): JournalRecord | undefined {
-    return undefined;
+  private recs = new Map<string, JournalRecord>();
+
+  upsert(rec: JournalRecord): void {
+    this.recs.set(rec.txnId, copyRecord(rec));
   }
-  remove(_txnId: string): void {}
+  get(txnId: string): JournalRecord | undefined {
+    const rec = this.recs.get(txnId);
+    return rec ? copyRecord(rec) : undefined;
+  }
+  remove(txnId: string): void {
+    this.recs.delete(txnId);
+  }
   all(): JournalRecord[] {
-    return [];
+    return [...this.recs.values()].map(copyRecord);
   }
   exportAll(): JournalRecord[] {
-    return [];
+    return this.all();
   }
-  importAll(_recs: JournalRecord[]): void {}
+  importAll(recs: JournalRecord[]): void {
+    this.recs.clear();
+    for (const rec of recs) this.recs.set(rec.txnId, copyRecord(rec));
+  }
 }
