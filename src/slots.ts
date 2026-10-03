@@ -26,12 +26,15 @@ export class SlotRing<T> {
     return undefined;
   }
 
-  takeSlot(slot: number): ScheduledLease<T>[] {
+  /** Snapshot of leases currently mounted on a slot (slot is not cleared). */
+  entries(slot: number): ScheduledLease<T>[] {
     const s = ((slot % this.slotCount) + this.slotCount) % this.slotCount;
-    const bag = this.bags[s]!;
-    const out = [...bag.values()];
-    this.bags[s] = new Map();
-    return out;
+    return [...this.bags[s]!.values()];
+  }
+
+  removeFrom(slot: number, leaseId: string): boolean {
+    const s = ((slot % this.slotCount) + this.slotCount) % this.slotCount;
+    return this.bags[s]!.delete(leaseId);
   }
 
   size(): number {

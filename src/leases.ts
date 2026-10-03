@@ -29,7 +29,10 @@ export class LeaseBook<T> {
   }
 
   drainExpired(): ExpiredLease<T>[] {
-    const out = [...this.expired].sort((a, b) => (a.leaseId < b.leaseId ? -1 : 1));
+    const out = [...this.expired].sort((a, b) => {
+      if (a.expireAt !== b.expireAt) return a.expireAt - b.expireAt;
+      return a.leaseId < b.leaseId ? -1 : a.leaseId > b.leaseId ? 1 : 0;
+    });
     this.expired = [];
     return out;
   }

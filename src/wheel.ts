@@ -5,12 +5,14 @@ export class WheelIndex {
     private readonly tickMs: number,
   ) {}
 
-  slotsFromTtl(ttlMs: number): number {
-    return Math.floor(ttlMs / this.tickMs);
+  /** Ticks until a span elapses; always lands at least one slot ahead. */
+  slotsForSpan(spanMs: number): number {
+    return Math.max(1, Math.ceil(spanMs / this.tickMs));
   }
 
-  targetSlot(hand: number, ttlMs: number): number {
-    const steps = this.slotsFromTtl(ttlMs);
+  /** Slot the hand will be on at the first tick boundary >= expireAt. */
+  targetSlot(hand: number, handTime: number, expireAt: number): number {
+    const steps = this.slotsForSpan(expireAt - handTime);
     return (hand + steps) % this.slotCount;
   }
 }
