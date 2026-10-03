@@ -7,9 +7,13 @@ export class PointIndex {
   constructor(ringSize: number) { this.ringSize = ringSize; }
   clear(): void { this.list.length = 0; }
   addNodePoints(nodeId: string, weight: number): void {
-    // starter: only one point using bare id (ignores weight>=2)
-    void weight;
-    this.list.push({ position: hash32(nodeId) % this.ringSize, nodeId });
+    if (weight === 1) {
+      this.list.push({ position: hash32(nodeId) % this.ringSize, nodeId });
+    } else {
+      for (let i = 0; i < weight; i++) {
+        this.list.push({ position: hash32(`${nodeId}#${i}`) % this.ringSize, nodeId });
+      }
+    }
     this.sort();
   }
   removeNode(nodeId: string): void {
