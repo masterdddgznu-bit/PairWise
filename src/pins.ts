@@ -1,21 +1,39 @@
+import { UnknownPinError } from "./errors.js";
+
 export class PinBook {
-  pin(_pinId: string, _epoch: number, _deadline: number | null): void {}
-  unpin(_pinId: string): boolean {
-    return false;
+  private pins = new Map<string, { epoch: number; deadline: number | null }>();
+
+  pin(pinId: string, epoch: number, deadline: number | null): void {
+    this.pins.set(pinId, { epoch, deadline });
   }
-  epochOf(_pinId: string): number {
-    return 0;
+
+  unpin(pinId: string): boolean {
+    return this.pins.delete(pinId);
   }
-  has(_pinId: string): boolean {
-    return false;
+
+  epochOf(pinId: string): number {
+    const p = this.pins.get(pinId);
+    if (!p) throw new UnknownPinError(`unknown pin: ${pinId}`);
+    return p.epoch;
   }
+
+  has(pinId: string): boolean {
+    return this.pins.has(pinId);
+  }
+
   ids(): string[] {
-    return [];
+    return [...this.pins.keys()].sort();
   }
+
   epochs(): number[] {
-    return [];
+    return [...this.pins.values()].map((p) => p.epoch);
   }
-  expired(_now: number): string[] {
-    return [];
+
+  expired(now: number): string[] {
+    const out: string[] = [];
+    for (const [id, p] of this.pins) {
+      if (p.deadline !== null && now >= p.deadline) out.push(id);
+    }
+    return out.sort();
   }
 }
