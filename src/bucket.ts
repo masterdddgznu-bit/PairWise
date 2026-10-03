@@ -45,6 +45,6 @@ export class BucketStore {
 
   overSoft(id: string): boolean {
     const c = this.get(id);
-    return c.committed > c.soft;
+    return c.committed + c.reserved > c.soft;
   }
 }

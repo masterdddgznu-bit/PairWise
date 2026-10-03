@@ -59,7 +59,10 @@ export class QuotaTree {
   }
 
   canFit(buckets: BucketStore, nodeId: string, amount: number): boolean {
-    return buckets.headroom(nodeId) >= amount;
+    for (const id of this.pathToRoot(nodeId)) {
+      if (buckets.headroom(id) < amount) return false;
+    }
+    return true;
   }
 
   applyReserved(buckets: BucketStore, nodeId: string, amount: number): void {

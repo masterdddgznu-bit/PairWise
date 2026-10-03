@@ -33,7 +33,7 @@ export class TicketLedger {
   expiredIds(now: number): string[] {
     const ids: string[] = [];
     for (const t of this.tickets.values()) {
-      if (now > t.expireAt) ids.push(t.ticketId);
+      if (now >= t.expireAt) ids.push(t.ticketId);
     }
     return ids.sort();
   }
