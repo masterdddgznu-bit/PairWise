@@ -35,16 +35,19 @@ export class LaneBook {
     return n;
   }
 
-  /** Shallow-share entries without retaining pages (wrong). */
   cloneEntries(from: LaneMeta, pages: PageStore): Map<string, number> {
-    void pages;
-    return from.entries;
+    const entries = new Map<string, number>();
+    for (const [key, pageId] of from.entries) {
+      pages.retain(pageId);
+      entries.set(key, pageId);
+    }
+    return entries;
   }
 
   expired(now: number): string[] {
     const out: string[] = [];
     for (const m of this.map.values()) {
-      if (m.kind === "snapshot" && m.deadline !== null && now > m.deadline) {
+      if (m.kind === "snapshot" && m.deadline !== null && now >= m.deadline) {
         out.push(m.name);
       }
     }
