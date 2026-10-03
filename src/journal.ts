@@ -11,16 +11,42 @@ export type JournalRecord = {
 };
 
 export class Journal {
-  upsert(_rec: JournalRecord): void {}
-  get(_txnId: string): JournalRecord | undefined {
-    return undefined;
+  private records = new Map<string, JournalRecord>();
+
+  upsert(rec: JournalRecord): void {
+    this.records.set(rec.txnId, {
+      ...rec,
+      participants: [...rec.participants],
+      keys: Object.fromEntries(
+        Object.entries(rec.keys).map(([pid, keys]) => [pid, [...keys]]),
+      ),
+    });
   }
-  remove(_txnId: string): void {}
+
+  get(txnId: string): JournalRecord | undefined {
+    return this.records.get(txnId);
+  }
+
+  remove(txnId: string): void {
+    this.records.delete(txnId);
+  }
+
   all(): JournalRecord[] {
-    return [];
+    return [...this.records.values()];
   }
+
   exportAll(): JournalRecord[] {
-    return [];
+    return this.all().map((rec) => ({
+      ...rec,
+      participants: [...rec.participants],
+      keys: Object.fromEntries(
+        Object.entries(rec.keys).map(([pid, keys]) => [pid, [...keys]]),
+      ),
+    }));
   }
-  importAll(_recs: JournalRecord[]): void {}
+
+  importAll(recs: JournalRecord[]): void {
+    this.records.clear();
+    for (const rec of recs) this.upsert(rec);
+  }
 }
