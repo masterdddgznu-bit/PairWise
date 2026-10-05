@@ -1,0 +1,17 @@
+export { VirtualClock } from "./clock.js";
+export { HoldPin } from "./holdpin.js";
+export type {
+  HoldPinOptions,
+  PinResult,
+  DriveResult,
+} from "./holdpin.js";
+export {
+  HoldPinError,
+  InvalidConfigError,
+  InvalidArgError,
+  DuplicateHoldError,
+  FenceError,
+  UnknownKeyError,
+  UnknownTicketError,
+  CapacityError,
+} from "./errors.js";
